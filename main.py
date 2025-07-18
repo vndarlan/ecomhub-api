@@ -187,7 +187,7 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
     # URL da API
     api_url = "https://api.ecomhub.app/api/orders"
     params = {
-        "offset": 0,
+        "page": 0,  # Começar da página 0
         "orderBy": "null",
         "orderDirection": "null", 
         "conditions": json.dumps(conditions),
@@ -209,7 +209,7 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
     logger.info(f"🔍 Cookies: {list(cookies.keys())}")
     
     all_orders = []
-    offset = 0
+    page = 0  # Começar da página 0
     
     # Configurar session uma vez
     session = requests.Session()
@@ -218,9 +218,9 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
     
     while True:
         try:
-            params["offset"] = offset
+            params["page"] = page  # Usar page em vez de offset
             
-            logger.info(f"📡 Chamando API offset={offset}...")
+            logger.info(f"📡 Chamando API página={page}...")
             
             response = session.get(api_url, params=params, timeout=60)
             
@@ -242,7 +242,7 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
             
             try:
                 orders = response.json()
-                logger.info(f"✅ Página offset={offset}: {len(orders)} pedidos")
+                logger.info(f"✅ Página {page}: {len(orders)} pedidos")
                 
             except Exception as e:
                 logger.error(f"❌ Erro JSON: {e}")
@@ -250,7 +250,7 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
             
             # Se não há pedidos, parar paginação
             if not orders or len(orders) == 0:
-                logger.info(f"📡 Fim da paginação - sem mais dados")
+                logger.info(f"📡 Fim da paginação na página {page}")
                 break
             
             # Processar pedidos desta página
@@ -267,7 +267,7 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
                         produto = products.get("name", produto)
                     
                     # Debug primeiro produto da primeira página
-                    if offset == 0 and i == 0:
+                    if page == 0 and i == 0:
                         logger.info(f"🔍 Primeiro produto extraído: '{produto}'")
                     
                     order_data = {
@@ -284,13 +284,13 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
                     page_count += 1
                     
                 except Exception as e:
-                    logger.warning(f"Erro ao processar pedido offset={offset}, index={i}: {e}")
+                    logger.warning(f"Erro ao processar pedido página={page}, index={i}: {e}")
                     continue
             
-            logger.info(f"✅ Página offset={offset}: {page_count} pedidos processados")
+            logger.info(f"✅ Página {page}: {page_count} pedidos processados")
             
-            # Incrementar offset para próxima página
-            offset += len(orders)
+            # Incrementar página (1 em 1)
+            page += 1
             
             # Limite de segurança
             if len(all_orders) > 50000:
@@ -298,7 +298,7 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
                 break
                 
         except Exception as e:
-            logger.error(f"❌ Erro na chamada API offset={offset}: {e}")
+            logger.error(f"❌ Erro na chamada API página={page}: {e}")
             break
     
     logger.info(f"✅ Total extraído: {len(all_orders)} pedidos")
