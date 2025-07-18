@@ -226,18 +226,24 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
             response_test = requests.get(api_url, params=params, headers=headers)
             logger.info(f"🧪 Teste SEM cookies - Status: {response_test.status_code}")
             
-            response = requests.get(api_url, params=params, headers=headers, cookies=cookies)
+            response = requests.get(api_url, params=params, headers=headers, cookies=cookies, timeout=60)
             
-            logger.info(f"🔍 API URL completa: {response.url}")
             logger.info(f"🔍 Status Code: {response.status_code}")
-            logger.info(f"🔍 Response completo: {response.text}")
+            logger.info(f"🔍 Content-Length: {len(response.content)}")
+            logger.info(f"🔍 Content-Type: {response.headers.get('Content-Type')}")
             
             if response.status_code != 200:
                 logger.error(f"❌ API erro {response.status_code}: {response.text}")
                 break
-                
-            # API retorna array direto, não objeto com "data"
-            orders = response.json() if response.text.strip().startswith('[') else response.json().get("data", [])
+            
+            try:
+                # API retorna array direto
+                orders = response.json()
+                logger.info(f"✅ JSON decodificado. Tipo: {type(orders)}")
+            except Exception as e:
+                logger.error(f"❌ Erro ao decodificar JSON: {e}")
+                logger.error(f"Raw response: {response.text[:200]}")
+                break
             
             if not orders:
                 logger.info("📡 Sem mais dados - parando")
