@@ -187,7 +187,7 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
     # URL da API
     api_url = "https://api.ecomhub.app/api/orders"
     params = {
-        "page": 0,  # Começar da página 0
+        "offset": 0,  # Voltar para offset
         "orderBy": "null",
         "orderDirection": "null", 
         "conditions": json.dumps(conditions),
@@ -209,7 +209,7 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
     logger.info(f"🔍 Cookies: {list(cookies.keys())}")
     
     all_orders = []
-    page = 0  # Começar da página 0
+    offset = 0
     
     # Configurar session uma vez
     session = requests.Session()
@@ -218,9 +218,9 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
     
     while True:
         try:
-            params["page"] = page  # Usar page em vez de offset
+            params["offset"] = offset
             
-            logger.info(f"📡 Chamando API página={page}...")
+            logger.info(f"📡 Chamando API offset={offset}...")
             
             response = session.get(api_url, params=params, timeout=60)
             
@@ -242,19 +242,20 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
             
             try:
                 orders = response.json()
-                logger.info(f"✅ Página {page}: {len(orders)} pedidos")
+                logger.info(f"✅ Offset {offset}: {len(orders)} pedidos")
                 
             except Exception as e:
                 logger.error(f"❌ Erro JSON: {e}")
                 break
             
-            # Se não há pedidos, parar paginação
+            # Se não há pedidos, parar
             if not orders or len(orders) == 0:
-                logger.info(f"📡 Fim da paginação na página {page}")
+                logger.info(f"📡 Fim: offset {offset} vazio")
                 break
             
-            # Processar pedidos desta página
-            page_count = 0
+            # Processar pedidos desta resposta
+            batch_count = 0
+            
             for i, order in enumerate(orders):
                 try:
                     produto = "Produto Desconhecido"
@@ -266,9 +267,9 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
                         products = variants.get("products", {})
                         produto = products.get("name", produto)
                     
-                    # Debug primeiro produto da primeira página
-                    if page == 0 and i == 0:
-                        logger.info(f"🔍 Primeiro produto extraído: '{produto}'")
+                    # Debug primeiro produto
+                    if offset == 0 and i == 0:
+                        logger.info(f"🔍 Primeiro produto: '{produto}'")
                     
                     order_data = {
                         'numero_pedido': order.get('shopifyOrderNumber', ''),
@@ -281,16 +282,16 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
                     }
                     
                     all_orders.append(order_data)
-                    page_count += 1
+                    batch_count += 1
                     
                 except Exception as e:
-                    logger.warning(f"Erro ao processar pedido página={page}, index={i}: {e}")
+                    logger.warning(f"Erro pedido offset={offset}, index={i}: {e}")
                     continue
             
-            logger.info(f"✅ Página {page}: {page_count} pedidos processados")
+            logger.info(f"✅ Offset {offset}: {batch_count} pedidos processados")
             
-            # Incrementar página (1 em 1)
-            page += 1
+            # Incrementar offset pelo número de registros recebidos
+            offset += len(orders)
             
             # Limite de segurança
             if len(all_orders) > 50000:
@@ -298,7 +299,7 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
                 break
                 
         except Exception as e:
-            logger.error(f"❌ Erro na chamada API página={page}: {e}")
+            logger.error(f"❌ Erro offset={offset}: {e}")
             break
     
     logger.info(f"✅ Total extraído: {len(all_orders)} pedidos")

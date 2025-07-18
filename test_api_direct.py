@@ -45,9 +45,9 @@ def test_api_complete():
         }
         
         params = {
-            "offset": 0,
-            "orderBy": "null", 
-            "orderDirection": "null",
+            "offset": 48,
+            "orderBy": "null",
+            "orderDirection": "null", 
             "conditions": json.dumps(conditions),
             "search": ""
         }
