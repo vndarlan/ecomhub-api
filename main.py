@@ -226,39 +226,26 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
             response_test = requests.get(api_url, params=params, headers=headers)
             logger.info(f"🧪 Teste SEM cookies - Status: {response_test.status_code}")
             
-            response = requests.get(api_url, params=params, headers=headers, cookies=cookies, timeout=60)
+            # Usar requests session para melhor handling automático
+            session = requests.Session()
+            session.headers.update(headers)
+            session.cookies.update(cookies)
+            
+            response = session.get(api_url, params=params, timeout=60)
             
             logger.info(f"🔍 Status Code: {response.status_code}")
-            logger.info(f"🔍 Encoding: {response.encoding}")
             
             if response.status_code != 200:
                 logger.error(f"❌ API erro {response.status_code}")
                 break
             
             try:
-                # Forçar decodificação correta
-                response.encoding = 'utf-8'
-                content = response.text
-                
-                # Se ainda estiver comprimido, usar content
-                if not content or content.startswith(('�', '\x00')):
-                    import gzip
-                    import io
-                    content = gzip.decompress(response.content).decode('utf-8')
-                    logger.info("🔧 Decompressão manual aplicada")
-                
-                orders = json.loads(content)
+                orders = response.json()
                 logger.info(f"✅ JSON decodificado: {len(orders)} itens")
                 
             except Exception as e:
                 logger.error(f"❌ Erro JSON: {e}")
-                # Fallback: tentar response.json() direto
-                try:
-                    orders = response.json()
-                    logger.info("✅ Fallback JSON funcionou")
-                except:
-                    logger.error("❌ Fallback também falhou")
-                    break
+                break
             
             if not orders:
                 logger.info("📡 Sem mais dados - parando")
