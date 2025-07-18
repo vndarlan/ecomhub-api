@@ -196,7 +196,7 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
     
     headers = {
         "Accept": "*/*",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Encoding": "gzip, deflate, br",
         "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
         "Content-Type": "application/json",
         "Origin": "https://go.ecomhub.app",
