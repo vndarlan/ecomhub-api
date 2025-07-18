@@ -167,13 +167,12 @@ def get_auth_cookies(driver):
     return session_cookies
 
 def extract_via_api(driver, data_inicio, data_fim, pais_id):
-    """Extrai dados via API direta do EcomHub - VERSÃO CORRIGIDA"""
+    """Extrai dados via API direta do EcomHub - PAGINAÇÃO CORRETA"""
     logger.info("🚀 Extraindo via API direta...")
     
     # Obter cookies após login
     cookies = get_auth_cookies(driver)
     
-    # Construir parâmetros da API (igual à API real)
     conditions = {
         "orders": {
             "date": {
@@ -184,17 +183,8 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
         }
     }
     
-    # URL da API
     api_url = "https://api.ecomhub.app/api/orders"
-    params = {
-        "offset": 0,  # Voltar para offset
-        "orderBy": "null",
-        "orderDirection": "null", 
-        "conditions": json.dumps(conditions),
-        "search": ""
-    }
     
-    # Headers sem Accept-Encoding para evitar problemas de compressão
     headers = {
         "Accept": "*/*",
         "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -204,59 +194,42 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
         "X-Requested-With": "XMLHttpRequest"
     }
     
-    logger.info(f"🔍 User-Agent: {headers['User-Agent']}")
-    logger.info(f"🔍 Conditions JSON: {json.dumps(conditions)}")
-    logger.info(f"🔍 Cookies: {list(cookies.keys())}")
+    logger.info(f"🔍 Conditions: {json.dumps(conditions)}")
     
     all_orders = []
-    offset = 0
+    page = 0  # offset é número da página
     
-    # Configurar session uma vez
     session = requests.Session()
     session.headers.update(headers)
     session.cookies.update(cookies)
     
     while True:
+        params = {
+            "offset": page,  # página atual
+            "orderBy": "null",
+            "orderDirection": "null", 
+            "conditions": json.dumps(conditions),
+            "search": ""
+        }
+        
         try:
-            params["offset"] = offset
-            
-            logger.info(f"📡 Chamando API offset={offset}...")
+            logger.info(f"📡 Página {page}...")
             
             response = session.get(api_url, params=params, timeout=60)
             
-            logger.info(f"🔍 Status Code: {response.status_code}")
-            logger.info(f"🔍 Response Length: {len(response.text)}")
-            
             if response.status_code != 200:
-                logger.error(f"❌ API erro {response.status_code}")
+                logger.error(f"❌ Erro {response.status_code}")
                 break
             
-            response_text = response.text
-            if not response_text.strip():
-                logger.error("❌ Resposta vazia")
-                break
+            orders = response.json()
+            logger.info(f"✅ Página {page}: {len(orders)} pedidos")
             
-            if response_text.strip().startswith('<'):
-                logger.error("❌ API retornou HTML")
-                break
-            
-            try:
-                orders = response.json()
-                logger.info(f"✅ Offset {offset}: {len(orders)} pedidos")
-                
-            except Exception as e:
-                logger.error(f"❌ Erro JSON: {e}")
-                break
-            
-            # Se não há pedidos, parar
             if not orders or len(orders) == 0:
-                logger.info(f"📡 Fim: offset {offset} vazio")
+                logger.info(f"📡 Fim na página {page}")
                 break
             
-            # Processar pedidos desta resposta
-            batch_count = 0
-            
-            for i, order in enumerate(orders):
+            # Processar pedidos
+            for order in orders:
                 try:
                     produto = "Produto Desconhecido"
                     
@@ -266,10 +239,6 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
                         variants = first_item.get("productsVariants", {})
                         products = variants.get("products", {})
                         produto = products.get("name", produto)
-                    
-                    # Debug primeiro produto
-                    if offset == 0 and i == 0:
-                        logger.info(f"🔍 Primeiro produto: '{produto}'")
                     
                     order_data = {
                         'numero_pedido': order.get('shopifyOrderNumber', ''),
@@ -282,27 +251,22 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
                     }
                     
                     all_orders.append(order_data)
-                    batch_count += 1
                     
                 except Exception as e:
-                    logger.warning(f"Erro pedido offset={offset}, index={i}: {e}")
+                    logger.warning(f"Erro pedido: {e}")
                     continue
             
-            logger.info(f"✅ Offset {offset}: {batch_count} pedidos processados")
+            page += 1  # próxima página
             
-            # Incrementar offset pelo número de registros recebidos
-            offset += len(orders)
-            
-            # Limite de segurança
             if len(all_orders) > 50000:
-                logger.warning("⚠️ Limite de 50k pedidos atingido")
+                logger.warning("⚠️ Limite 50k atingido")
                 break
                 
         except Exception as e:
-            logger.error(f"❌ Erro offset={offset}: {e}")
+            logger.error(f"❌ Erro página {page}: {e}")
             break
     
-    logger.info(f"✅ Total extraído: {len(all_orders)} pedidos")
+    logger.info(f"✅ Total: {len(all_orders)} pedidos de {page} páginas")
     return all_orders
 
 def extract_orders_data(driver):
