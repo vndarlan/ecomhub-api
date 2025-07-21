@@ -457,9 +457,10 @@ def process_effectiveness_optimized(orders_data):
         
         problemas = counts["issue"]
         
-        retornou = counts["returning"] + counts["returned"]
+        # NOVA: devolução (returning + returned + issue)
+        devolucao = counts["returning"] + counts["returned"] + counts["issue"]
         
-        # NOVO: cancelados (soma de todas variações)
+        # Cancelados (soma de todas variações)
         cancelados = counts["cancelled"] + counts["canceled"] + counts["cancelado"]
         
         entregues = counts["delivered"]
@@ -467,7 +468,7 @@ def process_effectiveness_optimized(orders_data):
         # Percentuais
         pct_transito = (transito / totais * 100) if totais > 0 else 0
         
-        pct_devolvidos = ((counts["returning"] + counts["returned"] + counts["issue"]) / totais * 100) if totais > 0 else 0
+        pct_devolvidos = (devolucao / totais * 100) if totais > 0 else 0
         
         # Efetividade parcial
         efetividade_parcial = (entregues / enviados * 100) if enviados > 0 else 0
@@ -478,12 +479,12 @@ def process_effectiveness_optimized(orders_data):
         row = {
             "Imagem": counts["imagem_url"],
             "Produto": produto,
-            "Totais": totais,  # REMOVIDA palavra "Pedidos"
-            "Enviados": enviados,  # REMOVIDA palavra "Pedidos"
-            "Transito": transito,  # REMOVIDA palavra "Pedidos"
-            "Problemas": problemas,  # REMOVIDA palavra "Pedidos"
-            "Retornou": retornou,
-            "Cancelados": cancelados,  # NOVA COLUNA
+            "Totais": totais,
+            "Enviados": enviados,
+            "Transito": transito,
+            "Problemas": problemas,
+            "Devolucao": devolucao,  # NOVA COLUNA após Problemas
+            "Cancelados": cancelados,
             "Entregues": entregues,
             "PCT_Transito": f"{pct_transito:.1f}%",
             "PCT_Devolvidos": f"{pct_devolvidos:.1f}%",
@@ -500,9 +501,9 @@ def process_effectiveness_optimized(orders_data):
         # Adicionar linha de totais
         totals = {"Imagem": None, "Produto": "Total"}
         
-        # Somar colunas numéricas
+        # Somar colunas numéricas (atualizado com nova estrutura)
         numeric_cols = ["Totais", "Enviados", "Transito", 
-                       "Problemas", "Retornou", "Cancelados", "Entregues"]
+                       "Problemas", "Devolucao", "Cancelados", "Entregues"]
         
         for col in numeric_cols:
             totals[col] = sum(row[col] for row in result_data)
@@ -513,7 +514,7 @@ def process_effectiveness_optimized(orders_data):
         total_entregues = totals["Entregues"]
         
         totals["PCT_Transito"] = f"{(totals['Transito'] / total_pedidos * 100):.1f}%" if total_pedidos > 0 else "0%"
-        totals["PCT_Devolvidos"] = f"{((totals['Retornou'] + totals['Problemas']) / total_pedidos * 100):.1f}%" if total_pedidos > 0 else "0%"
+        totals["PCT_Devolvidos"] = f"{(totals['Devolucao'] / total_pedidos * 100):.1f}%" if total_pedidos > 0 else "0%"
         totals["Efetividade_Parcial"] = f"{(total_entregues / total_enviados * 100):.1f}%" if total_enviados > 0 else "0%"
         totals["Efetividade_Total"] = f"{(total_entregues / total_pedidos * 100):.1f}% (Média)" if total_pedidos > 0 else "0%"
         
