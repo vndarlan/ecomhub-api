@@ -353,27 +353,18 @@ def process_effectiveness_data(orders_data):
         for status in unique_statuses:
             row[status] = counts[status]
         
-        row["Efetividade"] = f"{efetividade:.0f}%"
+        # REMOVIDA coluna Efetividade para visualização total
         result_data.append(row)
     
-    # Ordenar por efetividade
+    # Ordenar por total de registros (removida ordenação por efetividade)
     if result_data:
-        result_data.sort(key=lambda x: float(x["Efetividade"].replace('%', '')), reverse=True)
+        result_data.sort(key=lambda x: x["Total"], reverse=True)
         
-        # Adicionar linha de totais
+        # Adicionar linha de totais (sem efetividade)
         totals = {"Imagem": None, "Produto": "Total"}
         numeric_cols = ["Total"] + unique_statuses
         for col in numeric_cols:
             totals[col] = sum(row[col] for row in result_data)
-        
-        total_registros = totals["Total"]
-        total_delivered = sum(row["Delivered_Count"] for row in product_counts.values())
-        
-        if total_registros > 0:
-            efetividade_media = (total_delivered / total_registros) * 100
-            totals["Efetividade"] = f"{efetividade_media:.0f}% (Média)"
-        else:
-            totals["Efetividade"] = "0% (Média)"
         
         result_data.append(totals)
     
@@ -398,6 +389,9 @@ def process_effectiveness_optimized(orders_data):
         "delivered": 0,
         "returning": 0,
         "returned": 0,
+        "cancelled": 0,  # NOVO: cancelados
+        "canceled": 0,   # Variações de cancelamento
+        "cancelado": 0,
         "out_for_delivery": 0,
         "preparing_for_shipping": 0,
         "ready_to_ship": 0,
@@ -428,6 +422,7 @@ def process_effectiveness_optimized(orders_data):
             product_counts[produto] = {
                 "Total_Registros": 0, "imagem_url": imagem_url,
                 "delivered": 0, "returning": 0, "returned": 0,
+                "cancelled": 0, "canceled": 0, "cancelado": 0,
                 "out_for_delivery": 0, "preparing_for_shipping": 0, 
                 "ready_to_ship": 0, "with_courier": 0, "issue": 0,
                 "outros_status": defaultdict(int)
@@ -441,8 +436,8 @@ def process_effectiveness_optimized(orders_data):
         product_counts[produto]["Total_Registros"] += 1
         
         # Contar status específicos
-        known_statuses = ['delivered', 'returning', 'returned', 'out_for_delivery', 
-                         'preparing_for_shipping', 'ready_to_ship', 'with_courier', 'issue']
+        known_statuses = ['delivered', 'returning', 'returned', 'cancelled', 'canceled', 'cancelado',
+                         'out_for_delivery', 'preparing_for_shipping', 'ready_to_ship', 'with_courier', 'issue']
         
         if status in known_statuses:
             product_counts[produto][status] += 1
@@ -453,38 +448,42 @@ def process_effectiveness_optimized(orders_data):
     result_data = []
     for produto, counts in product_counts.items():
         # Colunas agrupadas
-        pedidos_totais = counts["Total_Registros"]
+        totais = counts["Total_Registros"]
         
-        pedidos_enviados = counts["delivered"] + counts["returning"]
+        enviados = counts["delivered"] + counts["returning"]
         
-        pedidos_transito = (counts["out_for_delivery"] + counts["preparing_for_shipping"] + 
-                           counts["ready_to_ship"] + counts["with_courier"])
+        transito = (counts["out_for_delivery"] + counts["preparing_for_shipping"] + 
+                   counts["ready_to_ship"] + counts["with_courier"])
         
-        pedidos_problemas = counts["issue"]
+        problemas = counts["issue"]
         
         retornou = counts["returning"] + counts["returned"]
+        
+        # NOVO: cancelados (soma de todas variações)
+        cancelados = counts["cancelled"] + counts["canceled"] + counts["cancelado"]
         
         entregues = counts["delivered"]
         
         # Percentuais
-        pct_transito = (pedidos_transito / pedidos_totais * 100) if pedidos_totais > 0 else 0
+        pct_transito = (transito / totais * 100) if totais > 0 else 0
         
-        pct_devolvidos = ((counts["returning"] + counts["returned"] + counts["issue"]) / pedidos_totais * 100) if pedidos_totais > 0 else 0
+        pct_devolvidos = ((counts["returning"] + counts["returned"] + counts["issue"]) / totais * 100) if totais > 0 else 0
         
         # Efetividade parcial
-        efetividade_parcial = (entregues / pedidos_enviados * 100) if pedidos_enviados > 0 else 0
+        efetividade_parcial = (entregues / enviados * 100) if enviados > 0 else 0
         
         # Efetividade total (original)
-        efetividade_total = (entregues / pedidos_totais * 100) if pedidos_totais > 0 else 0
+        efetividade_total = (entregues / totais * 100) if totais > 0 else 0
         
         row = {
             "Imagem": counts["imagem_url"],
             "Produto": produto,
-            "Pedidos_Totais": pedidos_totais,
-            "Pedidos_Enviados": pedidos_enviados,
-            "Pedidos_Transito": pedidos_transito,
-            "Pedidos_Problemas": pedidos_problemas,
+            "Totais": totais,  # REMOVIDA palavra "Pedidos"
+            "Enviados": enviados,  # REMOVIDA palavra "Pedidos"
+            "Transito": transito,  # REMOVIDA palavra "Pedidos"
+            "Problemas": problemas,  # REMOVIDA palavra "Pedidos"
             "Retornou": retornou,
+            "Cancelados": cancelados,  # NOVA COLUNA
             "Entregues": entregues,
             "PCT_Transito": f"{pct_transito:.1f}%",
             "PCT_Devolvidos": f"{pct_devolvidos:.1f}%",
@@ -502,19 +501,19 @@ def process_effectiveness_optimized(orders_data):
         totals = {"Imagem": None, "Produto": "Total"}
         
         # Somar colunas numéricas
-        numeric_cols = ["Pedidos_Totais", "Pedidos_Enviados", "Pedidos_Transito", 
-                       "Pedidos_Problemas", "Retornou", "Entregues"]
+        numeric_cols = ["Totais", "Enviados", "Transito", 
+                       "Problemas", "Retornou", "Cancelados", "Entregues"]
         
         for col in numeric_cols:
             totals[col] = sum(row[col] for row in result_data)
         
         # Calcular percentuais totais
-        total_pedidos = totals["Pedidos_Totais"]
-        total_enviados = totals["Pedidos_Enviados"]
+        total_pedidos = totals["Totais"]
+        total_enviados = totals["Enviados"]
         total_entregues = totals["Entregues"]
         
-        totals["PCT_Transito"] = f"{(totals['Pedidos_Transito'] / total_pedidos * 100):.1f}%" if total_pedidos > 0 else "0%"
-        totals["PCT_Devolvidos"] = f"{((totals['Retornou'] + totals['Pedidos_Problemas']) / total_pedidos * 100):.1f}%" if total_pedidos > 0 else "0%"
+        totals["PCT_Transito"] = f"{(totals['Transito'] / total_pedidos * 100):.1f}%" if total_pedidos > 0 else "0%"
+        totals["PCT_Devolvidos"] = f"{((totals['Retornou'] + totals['Problemas']) / total_pedidos * 100):.1f}%" if total_pedidos > 0 else "0%"
         totals["Efetividade_Parcial"] = f"{(total_entregues / total_enviados * 100):.1f}%" if total_enviados > 0 else "0%"
         totals["Efetividade_Total"] = f"{(total_entregues / total_pedidos * 100):.1f}% (Média)" if total_pedidos > 0 else "0%"
         
