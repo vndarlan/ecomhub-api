@@ -30,7 +30,7 @@ class ProcessRequest(BaseModel):
 
 class ProcessResponse(BaseModel):
     status: str
-    dados_processados: list
+    dados_processados: dict  # Agora contém ambas visualizações
     estatisticas: dict
     message: str
 
@@ -293,55 +293,9 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
     logger.info(f"✅ Total: {len(all_orders)} pedidos de {page} páginas")
     return all_orders
 
-def extract_orders_data(driver):
-    """Extrai dados dos pedidos da tabela"""
-    logger.info("Extraindo dados dos pedidos...")
-    
-    orders_data = []
-    
-    try:
-        # Buscar todas as linhas da tabela
-        rows = driver.find_elements(By.CSS_SELECTOR, "tr.has-rowAction")
-        
-        logger.info(f"Encontradas {len(rows)} linhas de pedidos")
-        
-        for row in rows:
-            try:
-                # Extrair dados de cada coluna
-                cells = row.find_elements(By.CSS_SELECTOR, "td")
-                
-                if len(cells) >= 7:  # Verificar se tem colunas suficientes
-                    order_data = {
-                        'numero_pedido': cells[0].text.strip(),
-                        'produto': cells[1].text.strip(),
-                        'data': cells[2].text.strip(),
-                        'warehouse': cells[3].text.strip(),
-                        'pais': cells[4].text.strip(),
-                        'preco': cells[5].text.strip(),
-                        'status': cells[6].text.strip()
-                    }
-                    
-                    # Extrair nome do produto do link se existir
-                    link_element = cells[1].find_element(By.TAG_NAME, "a") if cells[1].find_elements(By.TAG_NAME, "a") else None
-                    if link_element:
-                        order_data['produto'] = link_element.text.strip()
-                    
-                    orders_data.append(order_data)
-                    
-            except Exception as e:
-                logger.warning(f"Erro ao extrair dados da linha: {e}")
-                continue
-        
-        logger.info(f"Extraídos {len(orders_data)} pedidos com sucesso")
-        return orders_data
-        
-    except Exception as e:
-        logger.error(f"Erro ao extrair dados: {e}")
-        return []
-
 def process_effectiveness_data(orders_data):
-    """Processa dados e calcula efetividade por produto - COM IMAGEM"""
-    logger.info("Processando efetividade por produto...")
+    """Processa dados e calcula efetividade por produto - VISUALIZAÇÃO TOTAL"""
+    logger.info("Processando efetividade por produto - VISUALIZAÇÃO TOTAL...")
     
     product_counts = defaultdict(lambda: {"Total_Registros": 0, "Delivered_Count": 0, "imagem_url": None})
     
@@ -427,7 +381,150 @@ def process_effectiveness_data(orders_data):
     stats = {
         'total_registros': len(orders_data),
         'total_produtos': len(product_counts),
-        'produtos_com_dados': len([p for p in product_counts.values() if p["Total_Registros"] > 0])
+        'produtos_com_dados': len([p for p in product_counts.values() if p["Total_Registros"] > 0]),
+        'tipo_visualizacao': 'total'
+    }
+    
+    return result_data, stats
+
+def process_effectiveness_optimized(orders_data):
+    """Processa dados com visualização OTIMIZADA - colunas agrupadas"""
+    logger.info("Processando efetividade - Visualização OTIMIZADA...")
+    
+    product_counts = defaultdict(lambda: {
+        "Total_Registros": 0, 
+        "imagem_url": None,
+        # Contadores por status individual
+        "delivered": 0,
+        "returning": 0,
+        "returned": 0,
+        "out_for_delivery": 0,
+        "preparing_for_shipping": 0,
+        "ready_to_ship": 0,
+        "with_courier": 0,
+        "issue": 0,
+        # Outros status dinâmicos
+        "outros_status": defaultdict(int)
+    })
+    
+    # Mapear todos os status únicos primeiro
+    all_statuses = set()
+    for order in orders_data:
+        status = order.get('status', '').strip().lower()
+        if status:
+            all_statuses.add(status)
+    
+    # Processar cada pedido
+    for order in orders_data:
+        produto = order.get('produto', 'Produto Desconhecido').strip()
+        if not produto:
+            produto = 'Produto Desconhecido'
+        
+        status = order.get('status', '').strip().lower()
+        imagem_url = order.get('imagem_url')
+        
+        # Inicializar produto se não existe
+        if produto not in product_counts:
+            product_counts[produto] = {
+                "Total_Registros": 0, "imagem_url": imagem_url,
+                "delivered": 0, "returning": 0, "returned": 0,
+                "out_for_delivery": 0, "preparing_for_shipping": 0, 
+                "ready_to_ship": 0, "with_courier": 0, "issue": 0,
+                "outros_status": defaultdict(int)
+            }
+        
+        # Guardar primeira imagem
+        if imagem_url and not product_counts[produto]["imagem_url"]:
+            product_counts[produto]["imagem_url"] = imagem_url
+        
+        # Contar registros
+        product_counts[produto]["Total_Registros"] += 1
+        
+        # Contar status específicos
+        known_statuses = ['delivered', 'returning', 'returned', 'out_for_delivery', 
+                         'preparing_for_shipping', 'ready_to_ship', 'with_courier', 'issue']
+        
+        if status in known_statuses:
+            product_counts[produto][status] += 1
+        else:
+            product_counts[produto]["outros_status"][status] += 1
+    
+    # Converter para formato otimizado
+    result_data = []
+    for produto, counts in product_counts.items():
+        # Colunas agrupadas
+        pedidos_totais = counts["Total_Registros"]
+        
+        pedidos_enviados = counts["delivered"] + counts["returning"]
+        
+        pedidos_transito = (counts["out_for_delivery"] + counts["preparing_for_shipping"] + 
+                           counts["ready_to_ship"] + counts["with_courier"])
+        
+        pedidos_problemas = counts["issue"]
+        
+        retornou = counts["returning"] + counts["returned"]
+        
+        entregues = counts["delivered"]
+        
+        # Percentuais
+        pct_transito = (pedidos_transito / pedidos_totais * 100) if pedidos_totais > 0 else 0
+        
+        pct_devolvidos = ((counts["returning"] + counts["returned"] + counts["issue"]) / pedidos_totais * 100) if pedidos_totais > 0 else 0
+        
+        # Efetividade parcial
+        efetividade_parcial = (entregues / pedidos_enviados * 100) if pedidos_enviados > 0 else 0
+        
+        # Efetividade total (original)
+        efetividade_total = (entregues / pedidos_totais * 100) if pedidos_totais > 0 else 0
+        
+        row = {
+            "Imagem": counts["imagem_url"],
+            "Produto": produto,
+            "Pedidos_Totais": pedidos_totais,
+            "Pedidos_Enviados": pedidos_enviados,
+            "Pedidos_Transito": pedidos_transito,
+            "Pedidos_Problemas": pedidos_problemas,
+            "Retornou": retornou,
+            "Entregues": entregues,
+            "PCT_Transito": f"{pct_transito:.1f}%",
+            "PCT_Devolvidos": f"{pct_devolvidos:.1f}%",
+            "Efetividade_Parcial": f"{efetividade_parcial:.1f}%",
+            "Efetividade_Total": f"{efetividade_total:.1f}%"
+        }
+        
+        result_data.append(row)
+    
+    # Ordenar por efetividade total
+    if result_data:
+        result_data.sort(key=lambda x: float(x["Efetividade_Total"].replace('%', '')), reverse=True)
+        
+        # Adicionar linha de totais
+        totals = {"Imagem": None, "Produto": "Total"}
+        
+        # Somar colunas numéricas
+        numeric_cols = ["Pedidos_Totais", "Pedidos_Enviados", "Pedidos_Transito", 
+                       "Pedidos_Problemas", "Retornou", "Entregues"]
+        
+        for col in numeric_cols:
+            totals[col] = sum(row[col] for row in result_data)
+        
+        # Calcular percentuais totais
+        total_pedidos = totals["Pedidos_Totais"]
+        total_enviados = totals["Pedidos_Enviados"]
+        total_entregues = totals["Entregues"]
+        
+        totals["PCT_Transito"] = f"{(totals['Pedidos_Transito'] / total_pedidos * 100):.1f}%" if total_pedidos > 0 else "0%"
+        totals["PCT_Devolvidos"] = f"{((totals['Retornou'] + totals['Pedidos_Problemas']) / total_pedidos * 100):.1f}%" if total_pedidos > 0 else "0%"
+        totals["Efetividade_Parcial"] = f"{(total_entregues / total_enviados * 100):.1f}%" if total_enviados > 0 else "0%"
+        totals["Efetividade_Total"] = f"{(total_entregues / total_pedidos * 100):.1f}% (Média)" if total_pedidos > 0 else "0%"
+        
+        result_data.append(totals)
+    
+    # Estatísticas
+    stats = {
+        'total_registros': len(orders_data),
+        'total_produtos': len(product_counts),
+        'tipo_visualizacao': 'otimizada'
     }
     
     return result_data, stats
@@ -438,9 +535,9 @@ async def root():
 
 @app.post("/api/processar-ecomhub/", response_model=ProcessResponse)
 async def processar_ecomhub(request: ProcessRequest):
-    """Endpoint principal para processar dados via Selenium"""
+    """Endpoint principal - agora com suporte a ambas visualizações"""
     
-    logger.info(f"Iniciando processamento: {request.data_inicio} - {request.data_fim}, País: {request.pais_id}")
+    logger.info(f"Processamento: {request.data_inicio} - {request.data_fim}, País: {request.pais_id}")
     
     # Validações
     if request.pais_id not in PAISES_MAP:
@@ -448,7 +545,6 @@ async def processar_ecomhub(request: ProcessRequest):
     
     driver = None
     try:
-        # Criar driver (headless=False para desenvolvimento local)
         headless = os.getenv("ENVIRONMENT") != "local"
         driver = create_driver(headless=headless)
         
@@ -459,24 +555,32 @@ async def processar_ecomhub(request: ProcessRequest):
         orders_data = extract_via_api(driver, request.data_inicio, request.data_fim, request.pais_id)
         
         if not orders_data:
-            logger.warning("Nenhum pedido encontrado")
             return ProcessResponse(
                 status="success",
-                dados_processados=[],
+                dados_processados={"visualizacao_total": [], "visualizacao_otimizada": []},
                 estatisticas={"total_registros": 0, "total_produtos": 0},
-                message="Nenhum pedido encontrado para o período selecionado"
+                message="Nenhum pedido encontrado"
             )
         
-        # Processar efetividade
-        processed_data, stats = process_effectiveness_data(orders_data)
+        # RETORNAR AMBAS AS VISUALIZAÇÕES
+        processed_data_total, stats_total = process_effectiveness_data(orders_data)
+        processed_data_otimizada, stats_otimizada = process_effectiveness_optimized(orders_data)
         
-        logger.info(f"Processamento concluído: {stats['total_registros']} registros, {stats['total_produtos']} produtos")
+        # Estrutura da resposta com ambos os tipos
+        response_data = {
+            "visualizacao_total": processed_data_total,
+            "visualizacao_otimizada": processed_data_otimizada,
+            "stats_total": stats_total,
+            "stats_otimizada": stats_otimizada
+        }
+        
+        logger.info(f"Processamento concluído: {stats_total['total_registros']} registros")
         
         return ProcessResponse(
             status="success",
-            dados_processados=processed_data,
-            estatisticas=stats,
-            message=f"Processados {stats['total_registros']} pedidos de {PAISES_MAP[request.pais_id]}"
+            dados_processados=response_data,
+            estatisticas=stats_total,
+            message=f"Processados {stats_total['total_registros']} pedidos de {PAISES_MAP[request.pais_id]}"
         )
         
     except Exception as e:
