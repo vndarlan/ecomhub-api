@@ -486,8 +486,8 @@ def process_effectiveness_optimized(orders_data):
             "Devolucao": devolucao,  # NOVA COLUNA após Problemas
             "Cancelados": cancelados,
             "Entregues": entregues,
-            "PCT_Transito": f"{pct_transito:.1f}%",
-            "PCT_Devolvidos": f"{pct_devolvidos:.1f}%",
+            "% A Caminho": f"{pct_transito:.1f}%",  # RENOMEADO
+            "% Devolvidos": f"{pct_devolvidos:.1f}%",  # RENOMEADO
             "Efetividade_Parcial": f"{efetividade_parcial:.1f}%",
             "Efetividade_Total": f"{efetividade_total:.1f}%"
         }
@@ -513,8 +513,8 @@ def process_effectiveness_optimized(orders_data):
         total_enviados = totals["Enviados"]
         total_entregues = totals["Entregues"]
         
-        totals["PCT_Transito"] = f"{(totals['Transito'] / total_pedidos * 100):.1f}%" if total_pedidos > 0 else "0%"
-        totals["PCT_Devolvidos"] = f"{(totals['Devolucao'] / total_pedidos * 100):.1f}%" if total_pedidos > 0 else "0%"
+        totals["% A Caminho"] = f"{(totals['Transito'] / total_pedidos * 100):.1f}%" if total_pedidos > 0 else "0%"
+        totals["% Devolvidos"] = f"{(totals['Devolucao'] / total_pedidos * 100):.1f}%" if total_pedidos > 0 else "0%"
         totals["Efetividade_Parcial"] = f"{(total_entregues / total_enviados * 100):.1f}%" if total_enviados > 0 else "0%"
         totals["Efetividade_Total"] = f"{(total_entregues / total_pedidos * 100):.1f}% (Média)" if total_pedidos > 0 else "0%"
         
