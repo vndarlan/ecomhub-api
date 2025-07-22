@@ -298,11 +298,11 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
     logger.info(f"✅ Total: {len(all_orders)} pedidos de {page} páginas")
     return all_orders
 
-def process_effectiveness_data(orders_data):
+def process_effectiveness_data(orders_data, incluir_pais=False):
     """Processa dados e calcula efetividade por produto - VISUALIZAÇÃO TOTAL"""
     logger.info("Processando efetividade por produto - VISUALIZAÇÃO TOTAL...")
     
-    product_counts = defaultdict(lambda: {"Total_Registros": 0, "Delivered_Count": 0, "imagem_url": None})
+    product_counts = defaultdict(lambda: {"Total_Registros": 0, "Delivered_Count": 0, "imagem_url": None, "pais": None})
     
     # Obter status únicos
     unique_statuses = list(set([order['status'] for order in orders_data if order['status']]))
@@ -316,16 +316,19 @@ def process_effectiveness_data(orders_data):
         
         status = order.get('status', '').strip()
         imagem_url = order.get('imagem_url')
+        pais = order.get('pais', '')
         
         # Inicializar produto se não existe
         if produto not in product_counts:
-            product_counts[produto] = {"Total_Registros": 0, "Delivered_Count": 0, "imagem_url": imagem_url}
+            product_counts[produto] = {"Total_Registros": 0, "Delivered_Count": 0, "imagem_url": imagem_url, "pais": pais}
             for unique_status in unique_statuses:
                 product_counts[produto][unique_status] = 0
         
-        # Guardar primeira imagem encontrada para o produto
+        # Guardar primeira imagem e país encontrados para o produto
         if imagem_url and not product_counts[produto]["imagem_url"]:
             product_counts[produto]["imagem_url"] = imagem_url
+        if pais and not product_counts[produto]["pais"]:
+            product_counts[produto]["pais"] = pais
         
         # Contar registros
         product_counts[produto]["Total_Registros"] += 1
@@ -343,11 +346,17 @@ def process_effectiveness_data(orders_data):
         total_registros = counts["Total_Registros"]
         delivered = counts["Delivered_Count"]
         
-        row = {
+        row = {}
+        
+        # Adicionar coluna País se necessário (primeira coluna)
+        if incluir_pais:
+            row["País"] = counts["pais"]
+        
+        row.update({
             "Imagem": counts["imagem_url"],
             "Produto": produto,
             "Total": total_registros,
-        }
+        })
         
         # Adicionar cada status
         for status in unique_statuses:
@@ -360,7 +369,11 @@ def process_effectiveness_data(orders_data):
         result_data.sort(key=lambda x: x["Total"], reverse=True)
         
         # Adicionar linha de totais
-        totals = {"Imagem": None, "Produto": "Total"}
+        totals = {}
+        if incluir_pais:
+            totals["País"] = "Todos"
+        totals.update({"Imagem": None, "Produto": "Total"})
+        
         numeric_cols = ["Total"] + unique_statuses
         for col in numeric_cols:
             totals[col] = sum(row[col] for row in result_data)
@@ -377,13 +390,14 @@ def process_effectiveness_data(orders_data):
     
     return result_data, stats
 
-def process_effectiveness_optimized(orders_data):
+def process_effectiveness_optimized(orders_data, incluir_pais=False):
     """Processa dados com visualização OTIMIZADA - colunas agrupadas"""
     logger.info("Processando efetividade - Visualização OTIMIZADA...")
     
     product_counts = defaultdict(lambda: {
         "Total_Registros": 0, 
         "imagem_url": None,
+        "pais": None,
         # Contadores por status individual
         "delivered": 0,
         "returning": 0,
@@ -408,11 +422,12 @@ def process_effectiveness_optimized(orders_data):
         
         status = order.get('status', '').strip().lower()
         imagem_url = order.get('imagem_url')
+        pais = order.get('pais', '')
         
         # Inicializar produto se não existe
         if produto not in product_counts:
             product_counts[produto] = {
-                "Total_Registros": 0, "imagem_url": imagem_url,
+                "Total_Registros": 0, "imagem_url": imagem_url, "pais": pais,
                 "delivered": 0, "returning": 0, "returned": 0,
                 "cancelled": 0, "canceled": 0, "cancelado": 0,
                 "out_for_delivery": 0, "preparing_for_shipping": 0, 
@@ -420,9 +435,11 @@ def process_effectiveness_optimized(orders_data):
                 "outros_status": defaultdict(int)
             }
         
-        # Guardar primeira imagem
+        # Guardar primeira imagem e país
         if imagem_url and not product_counts[produto]["imagem_url"]:
             product_counts[produto]["imagem_url"] = imagem_url
+        if pais and not product_counts[produto]["pais"]:
+            product_counts[produto]["pais"] = pais
         
         # Contar registros
         product_counts[produto]["Total_Registros"] += 1
@@ -465,7 +482,13 @@ def process_effectiveness_optimized(orders_data):
         # Efetividade total
         efetividade_total = (entregues / totais * 100) if totais > 0 else 0
         
-        row = {
+        row = {}
+        
+        # Adicionar coluna País se necessário (primeira coluna)
+        if incluir_pais:
+            row["País"] = counts["pais"]
+        
+        row.update({
             "Imagem": counts["imagem_url"],
             "Produto": produto,
             "Totais": totais,
@@ -479,7 +502,7 @@ def process_effectiveness_optimized(orders_data):
             "% Devolvidos": f"{pct_devolvidos:.1f}%",
             "Efetividade_Parcial": f"{efetividade_parcial:.1f}%",
             "Efetividade_Total": f"{efetividade_total:.1f}%"
-        }
+        })
         
         result_data.append(row)
     
@@ -488,7 +511,10 @@ def process_effectiveness_optimized(orders_data):
         result_data.sort(key=lambda x: float(x["Efetividade_Total"].replace('%', '')), reverse=True)
         
         # Adicionar linha de totais
-        totals = {"Imagem": None, "Produto": "Total"}
+        totals = {}
+        if incluir_pais:
+            totals["País"] = "Todos"
+        totals.update({"Imagem": None, "Produto": "Total"})
         
         numeric_cols = ["Totais", "Enviados", "Transito", 
                        "Problemas", "Devolucao", "Cancelados", "Entregues"]
@@ -550,9 +576,13 @@ async def processar_ecomhub(request: ProcessRequest):
                 message="Nenhum pedido encontrado"
             )
         
+        # DETECTAR SE É "TODOS" E INCLUIR COLUNA PAÍS
+        incluir_pais = (request.pais_id == "todos")
+        logger.info(f"Incluir coluna País: {incluir_pais}")
+        
         # Retornar ambas as visualizações
-        processed_data_total, stats_total = process_effectiveness_data(orders_data)
-        processed_data_otimizada, stats_otimizada = process_effectiveness_optimized(orders_data)
+        processed_data_total, stats_total = process_effectiveness_data(orders_data, incluir_pais)
+        processed_data_otimizada, stats_otimizada = process_effectiveness_optimized(orders_data, incluir_pais)
         
         # Estrutura da resposta com ambos os tipos
         response_data = {
