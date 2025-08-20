@@ -31,21 +31,21 @@ def test_api_complete():
         for cookie in driver.get_cookies():
             cookies[cookie['name']] = cookie['value']
         
-        print(f"✅ Login OK. Cookies: {len(cookies)}")
+        print(f"Login OK. Cookies: {len(cookies)}")
         
-        # API call
+        # API call - ajustando para data mais recente
         conditions = {
             "orders": {
                 "date": {
-                    "start": "2025-07-10",
-                    "end": "2025-07-17"
+                    "start": "2025-08-01",
+                    "end": "2025-08-20"
                 },
                 "shippingCountry_id": 164
             }
         }
         
         params = {
-            "offset": 48,
+            "offset": 0,
             "orderBy": "null",
             "orderDirection": "null", 
             "conditions": json.dumps(conditions),
@@ -61,20 +61,20 @@ def test_api_complete():
         response = requests.get("https://api.ecomhub.app/api/orders", 
                               params=params, headers=headers, cookies=cookies)
         
-        print(f"📡 Status: {response.status_code}")
+        print(f"Status: {response.status_code}")
         
         if response.status_code == 200:
             data = response.json()
-            print(f"📊 Tipo resposta: {type(data)}")
-            print(f"📊 Total pedidos: {len(data) if isinstance(data, list) else 'não é lista'}")
+            print(f"Tipo resposta: {type(data)}")
+            print(f"Total pedidos: {len(data) if isinstance(data, list) else 'nao e lista'}")
             
             if isinstance(data, list) and len(data) > 0:
                 # Analisar primeiro pedido
                 order = data[0]
-                print(f"\n🔍 ESTRUTURA DO PRIMEIRO PEDIDO:")
-                print(f"Keys disponíveis: {list(order.keys())}")
+                print(f"\nESTRUTURA DO PRIMEIRO PEDIDO:")
+                print(f"Keys disponiveis: {list(order.keys())}")
                 
-                print(f"\n📦 DADOS PRINCIPAIS:")
+                print(f"\nDADOS PRINCIPAIS:")
                 print(f"  ID: {order.get('id')}")
                 print(f"  Number: {order.get('shopifyOrderNumber')}")
                 print(f"  Name: {order.get('shopifyOrderName')}")  
@@ -83,7 +83,7 @@ def test_api_complete():
                 print(f"  Created: {order.get('createdAt')}")
                 
                 # Procurar produtos/itens
-                print(f"\n🛍️ PROCURANDO PRODUTOS:")
+                print(f"\nPROCURANDO PRODUTOS:")
                 if 'items' in order:
                     items = order['items']
                     print(f"  Items encontrados: {len(items) if items else 0}")
@@ -91,7 +91,7 @@ def test_api_complete():
                         for i, item in enumerate(items):
                             print(f"    Item {i}: {item}")
                 else:
-                    print("  ❌ Campo 'items' não encontrado")
+                    print("  Campo 'items' nao encontrado")
                 
                 # Verificar outros campos relacionados a produto
                 product_fields = ['product', 'productName', 'title', 'name', 'sku']
@@ -100,11 +100,11 @@ def test_api_complete():
                         print(f"  {field}: {order[field]}")
                 
                 # Mostrar pedido completo
-                print(f"\n📋 PEDIDO COMPLETO:")
+                print(f"\nPEDIDO COMPLETO:")
                 print(json.dumps(order, indent=2))
                 
         else:
-            print(f"❌ Erro: {response.text}")
+            print(f"Erro: {response.text}")
             
     finally:
         driver.quit()

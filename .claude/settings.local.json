@@ -3,7 +3,11 @@
     "allow": [
       "Bash(git restore:*)",
       "Bash(ENVIRONMENT=local python test_api_direct.py)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "WebSearch",
+      "Bash(ENVIRONMENT=local python:*)",
+      "Bash(timeout:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

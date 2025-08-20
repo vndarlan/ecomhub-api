@@ -34,6 +34,19 @@ class ProcessResponse(BaseModel):
     estatisticas: dict
     message: str
 
+# Novos modelos para tracking de status
+class TrackingRequest(BaseModel):
+    data_inicio: str  # YYYY-MM-DD
+    data_fim: str     # YYYY-MM-DD
+    pais_id: str      # ID do país ou "todos"
+
+class TrackingResponse(BaseModel):
+    status: str
+    pedidos: list     # Lista com dados completos de cada pedido
+    total_pedidos: int
+    data_sincronizacao: str
+    pais_processado: str
+
 # Configurações
 ECOMHUB_URL = "https://go.ecomhub.app/login"
 LOGIN_EMAIL = "saviomendesalvess@gmail.com"
@@ -302,6 +315,196 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
     logger.info(f"✅ Total: {len(all_orders)} pedidos de {page} páginas")
     return all_orders
 
+def extract_orders_for_tracking(driver, data_inicio, data_fim, pais_id):
+    """Extrai dados COMPLETOS para tracking de status de pedidos"""
+    logger.info(f"🔍 Extraindo dados para tracking - {data_inicio} a {data_fim}, País: {pais_id}")
+    
+    cookies = {}
+    for cookie in driver.get_cookies():
+        cookies[cookie['name']] = cookie['value']
+    
+    api_url = "https://api.ecomhub.app/api/orders"
+    
+    # Determinar países para processar
+    if pais_id == "todos":
+        paises_processar = TODOS_PAISES_IDS
+        logger.info(f"🌍 Processando TODOS os países: {paises_processar}")
+    else:
+        paises_processar = [pais_id]
+        logger.info(f"🏴 Processando país específico: {pais_id}")
+    
+    all_orders = []
+    
+    for current_pais_id in paises_processar:
+        logger.info(f"🔍 Processando país {current_pais_id}...")
+        
+        conditions = {
+            "orders": {
+                "date": {
+                    "start": data_inicio,
+                    "end": data_fim
+                },
+                "shippingCountry_id": int(current_pais_id)
+            }
+        }
+        
+        headers = {
+            "Accept": "*/*",
+            "Content-Type": "application/json",
+            "Origin": "https://go.ecomhub.app",
+            "Referer": "https://go.ecomhub.app/",
+            "User-Agent": driver.execute_script("return navigator.userAgent;"),
+            "X-Requested-With": "XMLHttpRequest"
+        }
+        
+        session = requests.Session()
+        session.headers.update(headers)
+        session.cookies.update(cookies)
+        
+        page = 0
+        while True:
+            params = {
+                "offset": page,
+                "orderBy": "null", 
+                "orderDirection": "null",
+                "conditions": json.dumps(conditions),
+                "search": ""
+            }
+            
+            try:
+                response = session.get(api_url, params=params, timeout=60)
+                
+                if response.status_code != 200:
+                    logger.error(f"❌ Erro {response.status_code} para país {current_pais_id}")
+                    break
+                
+                orders = response.json()
+                logger.info(f"✅ País {current_pais_id}, Página {page}: {len(orders)} pedidos")
+                
+                if not orders or len(orders) == 0:
+                    break
+                
+                # Adicionar pedidos COMPLETOS - incluindo TODOS os campos originais
+                for order in orders:
+                    try:
+                        # Dados completos do pedido original da API
+                        complete_order = {
+                            # IDs e identificadores
+                            "id": order.get("id"),
+                            "external_id": order.get("external_id"),
+                            "shopifyOrderNumber": order.get("shopifyOrderNumber"),
+                            "shopifyOrderName": order.get("shopifyOrderName"),
+                            
+                            # Status e datas
+                            "status": order.get("status"),
+                            "createdAt": order.get("createdAt"),
+                            "updatedAt": order.get("updatedAt"),
+                            "date": order.get("date"),
+                            "dateDay": order.get("dateDay"),
+                            
+                            # Datas específicas de status
+                            "statusDateReturning": order.get("statusDateReturning"),
+                            "statusDateReturned": order.get("statusDateReturned"),
+                            "statusDateLost": order.get("statusDateLost"),
+                            "statusDateCancelled": order.get("statusDateCancelled"),
+                            "statusDateWithCourier": order.get("statusDateWithCourier"),
+                            
+                            # Dados do cliente
+                            "customerName": order.get("customerName"),
+                            "customerEmail": order.get("customerEmail"),
+                            "customerPhone": order.get("customerPhone"),
+                            "customerPreferences": order.get("customerPreferences"),
+                            
+                            # Endereços
+                            "billingAddress": order.get("billingAddress"),
+                            "shippingAddress": order.get("shippingAddress"),
+                            "shippingPostalCode": order.get("shippingPostalCode"),
+                            "shippingCity": order.get("shippingCity"),
+                            "shippingProvince": order.get("shippingProvince"),
+                            "shippingCountry": order.get("shippingCountry"),
+                            "shippingCountry_id": order.get("shippingCountry_id"),
+                            
+                            # Informações financeiras
+                            "price": order.get("price"),
+                            "priceOriginal": order.get("priceOriginal"),
+                            "currency_id": order.get("currency_id"),
+                            "paymentMethod": order.get("paymentMethod"),
+                            
+                            # Tracking e entrega
+                            "waybill": order.get("waybill"),
+                            "trackingUrl": order.get("trackingUrl"),
+                            "weight": order.get("weight"),
+                            "volume": order.get("volume"),
+                            
+                            # Loja e warehouse
+                            "store_id": order.get("store_id"),
+                            "warehouse_id": order.get("warehouse_id"),
+                            
+                            # Issues e problemas
+                            "issue": order.get("issue"),
+                            "issueDescription": order.get("issueDescription"),
+                            "issueResolution": order.get("issueResolution"),
+                            "issueResolutionDetail": order.get("issueResolutionDetail"),
+                            "isIssueResolutable": order.get("isIssueResolutable"),
+                            
+                            # Dados dos produtos (primeiro produto)
+                            "produto_nome": "Produto Desconhecido",
+                            "produto_sku": None,
+                            "produto_preco": None,
+                            
+                            # Dados de relacionamentos
+                            "countries": order.get("countries"),
+                            "stores": order.get("stores"),
+                            "warehouses": order.get("warehouses"),
+                            "shippingMethods": order.get("shippingMethods"),
+                            "currencies": order.get("currencies"),
+                            
+                            # Dados brutos
+                            "raw": order.get("raw"),
+                            "ordersItems": order.get("ordersItems"),
+                            
+                            # Flags
+                            "isTest": order.get("isTest", False),
+                            "origin": order.get("origin"),
+                            
+                            # Metadados para tracking
+                            "data_extracao": data_inicio + " - " + data_fim,
+                            "pais_origem_consulta": current_pais_id
+                        }
+                        
+                        # Extrair nome do produto dos ordersItems
+                        orders_items = order.get("ordersItems", [])
+                        if orders_items and len(orders_items) > 0:
+                            first_item = orders_items[0]
+                            variants = first_item.get("productsVariants", {})
+                            products = variants.get("products", {})
+                            complete_order["produto_nome"] = products.get("name", "Produto Desconhecido")
+                            complete_order["produto_preco"] = first_item.get("price")
+                            
+                            # SKU do produto
+                            stock_entries = first_item.get("stockEntries", {})
+                            stock_items = stock_entries.get("stockItems", {})
+                            complete_order["produto_sku"] = stock_items.get("sku")
+                        
+                        all_orders.append(complete_order)
+                        
+                    except Exception as e:
+                        logger.warning(f"Erro ao processar pedido para tracking: {e}")
+                        continue
+                
+                page += 1
+                
+                if len(all_orders) > 50000:
+                    logger.warning("⚠️ Limite 50k atingido no tracking")
+                    break
+                    
+            except Exception as e:
+                logger.error(f"❌ Erro página {page} do país {current_pais_id}: {e}")
+                break
+    
+    logger.info(f"✅ Tracking: {len(all_orders)} pedidos extraídos")
+    return all_orders
+
 def process_effectiveness_data(orders_data, incluir_pais=False):
     """Processa dados e calcula efetividade por produto - VISUALIZAÇÃO TOTAL"""
     logger.info("Processando efetividade por produto - VISUALIZAÇÃO TOTAL...")
@@ -559,6 +762,47 @@ def process_effectiveness_optimized(orders_data, incluir_pais=False):
     }
     
     return result_data, stats
+
+@app.post("/api/pedidos-status-tracking/", response_model=TrackingResponse)
+async def pedidos_status_tracking(request: TrackingRequest):
+    """Endpoint específico para sistema de tracking de status de pedidos"""
+    
+    logger.info(f"🔍 Tracking de status: {request.data_inicio} - {request.data_fim}, País: {request.pais_id}")
+    
+    # Validação do país
+    if request.pais_id not in PAISES_MAP:
+        raise HTTPException(status_code=400, detail="País não suportado")
+    
+    driver = None
+    try:
+        headless = os.getenv("ENVIRONMENT") != "local"
+        driver = create_driver(headless=headless)
+        
+        # Fazer login
+        login_ecomhub(driver)
+        
+        # Extrair dados completos via API
+        orders_data = extract_orders_for_tracking(driver, request.data_inicio, request.data_fim, request.pais_id)
+        
+        # Preparar resposta
+        from datetime import datetime
+        data_sincronizacao = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        return TrackingResponse(
+            status="success",
+            pedidos=orders_data,
+            total_pedidos=len(orders_data),
+            data_sincronizacao=data_sincronizacao,
+            pais_processado=PAISES_MAP[request.pais_id]
+        )
+        
+    except Exception as e:
+        logger.error(f"Erro no tracking: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro na extração de dados: {str(e)}")
+        
+    finally:
+        if driver:
+            driver.quit()
 
 @app.get("/")
 async def root():
