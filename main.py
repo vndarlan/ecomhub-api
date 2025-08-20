@@ -75,10 +75,12 @@ def create_driver(headless=True):
     # Para Railway (produção) - configuração específica
     logger.info("🔧 Modo PRODUÇÃO - Railway")
     options.add_argument("--headless=new")
-    options.add_argument("--remote-debugging-port=9222")
-    options.add_argument("--disable-background-timer-throttling")
-    options.add_argument("--disable-backgrounding-occluded-windows")
-    options.add_argument("--disable-renderer-backgrounding")
+    options.add_argument("--disable-web-security")
+    options.add_argument("--disable-features=VizDisplayCompositor")
+    options.add_argument("--single-process")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-plugins")
+    options.add_argument("--memory-pressure-off")
     options.binary_location = "/usr/bin/google-chrome"
     
     try:
