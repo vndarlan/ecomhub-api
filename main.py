@@ -67,41 +67,69 @@ PAISES_MAP = {
 TODOS_PAISES_IDS = ["164", "41", "66", "82", "142", "44", "139"]
 
 def create_driver(headless=True):
-    """Cria driver Chrome configurado - VERSÃO RAILWAY COMPATÍVEL"""
+    """Cria driver Chrome configurado - VERSÃO RAILWAY OTIMIZADA"""
     options = Options()
-    
-    # Configurações básicas
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1366,768")
-    options.add_argument("--disable-features=VizDisplayCompositor")
     
     # Para ambiente local
     if os.getenv("ENVIRONMENT") == "local":
         headless = False
         logger.info("🔧 Modo LOCAL - Browser visível")
+        options.add_argument("--window-size=1366,768")
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=options)
         return driver
     
-    # Para Railway (produção) - configuração específica
+    # Para Railway (produção) - configuração otimizada para estabilidade
     logger.info("🔧 Modo PRODUÇÃO - Railway")
+    
+    # Configurações críticas para Railway
     options.add_argument("--headless=new")
-    options.add_argument("--disable-web-security")
-    options.add_argument("--disable-features=VizDisplayCompositor")
-    options.add_argument("--single-process")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--remote-debugging-port=9222")
+    
+    # Configurações de memória e performance
+    options.add_argument("--memory-pressure-off")
+    options.add_argument("--max_old_space_size=4096")
+    options.add_argument("--disable-background-timer-throttling")
+    options.add_argument("--disable-backgrounding-occluded-windows")
+    options.add_argument("--disable-renderer-backgrounding")
+    
+    # Configurações de recursos
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-plugins")
-    options.add_argument("--memory-pressure-off")
+    options.add_argument("--disable-default-apps")
+    options.add_argument("--disable-sync")
+    options.add_argument("--disable-translate")
+    
+    # Configurações de rede
+    options.add_argument("--aggressive-cache-discard")
+    options.add_argument("--disable-background-networking")
+    
+    # Configurações de janela
+    options.add_argument("--window-size=1366,768")
+    options.add_argument("--start-maximized")
+    
+    # Localização do Chrome
     options.binary_location = "/usr/bin/google-chrome"
+    
+    # Configurações adicionais para estabilidade
+    options.add_experimental_option("useAutomationExtension", False)
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_argument("--disable-blink-features=AutomationControlled")
     
     try:
         driver = webdriver.Chrome(options=options)
         logger.info("✅ ChromeDriver criado para Railway")
         
-        driver.implicitly_wait(10)
-        driver.set_page_load_timeout(30)
+        # Configurações de timeout mais conservadoras
+        driver.implicitly_wait(15)
+        driver.set_page_load_timeout(45)
+        driver.set_script_timeout(30)
+        
+        # Adicionar user agent para parecer mais natural
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
         return driver
         
@@ -109,55 +137,85 @@ def create_driver(headless=True):
         logger.error(f"❌ Erro ao criar driver Railway: {e}")
         raise HTTPException(status_code=500, detail=f"Erro Chrome Railway: {str(e)}")
 
+def retry_with_backoff(func, max_retries=3, backoff_factor=2):
+    """Executa função com retry e backoff exponencial"""
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            
+            wait_time = backoff_factor ** attempt
+            logger.warning(f"❌ Tentativa {attempt + 1} falhou: {e}")
+            logger.info(f"⏳ Aguardando {wait_time}s antes da próxima tentativa...")
+            time.sleep(wait_time)
+
 def login_ecomhub(driver):
-    """Faz login no EcomHub"""
+    """Faz login no EcomHub com retry automático"""
     logger.info("Fazendo login no EcomHub...")
     
-    driver.get(ECOMHUB_URL)
-    
-    WebDriverWait(driver, 15).until(
-        EC.presence_of_element_located((By.TAG_NAME, "body"))
-    )
-    
-    time.sleep(3)
-    
-    try:
-        email_field = WebDriverWait(driver, 10).until(
+    def _do_login():
+        # Verificar se o driver ainda está ativo
+        try:
+            driver.current_url
+        except Exception:
+            raise Exception("Driver perdeu conexão - sessão inválida")
+        
+        driver.get(ECOMHUB_URL)
+        
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.TAG_NAME, "body"))
+        )
+        
+        time.sleep(3)
+        
+        # Verificar se já está logado
+        if "login" not in driver.current_url.lower():
+            logger.info("✅ Já logado - redirecionando...")
+            return True
+        
+        email_field = WebDriverWait(driver, 15).until(
             EC.element_to_be_clickable((By.ID, "input-email"))
         )
         email_field.clear()
         email_field.send_keys(LOGIN_EMAIL)
         logger.info("✅ Email preenchido")
         
-        password_field = WebDriverWait(driver, 10).until(
+        password_field = WebDriverWait(driver, 15).until(
             EC.element_to_be_clickable((By.ID, "input-password"))
         )
         password_field.clear()
         password_field.send_keys(LOGIN_PASSWORD)
         logger.info("✅ Senha preenchida")
         
-        time.sleep(1)
+        time.sleep(2)
         
-        login_button = WebDriverWait(driver, 10).until(
+        login_button = WebDriverWait(driver, 15).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "a[role='button'].btn.tone-default"))
         )
         
         driver.execute_script("arguments[0].scrollIntoView();", login_button)
-        time.sleep(0.5)
+        time.sleep(1)
         
         login_button.click()
         logger.info("✅ Botão de login clicado")
         
-        WebDriverWait(driver, 20).until(
+        # Aguardar redirecionamento com timeout maior
+        WebDriverWait(driver, 30).until(
             lambda d: "login" not in d.current_url.lower() or 
                      len(d.find_elements(By.ID, "input-email")) == 0
         )
         
         logger.info("✅ Login realizado com sucesso!")
         logger.info(f"🔗 URL atual: {driver.current_url}")
+        return True
+    
+    try:
+        return retry_with_backoff(_do_login, max_retries=3)
         
     except Exception as e:
-        logger.error(f"❌ Erro no login: {e}")
+        logger.error(f"❌ Erro no login após tentativas: {e}")
         logger.error(f"🔗 URL atual: {driver.current_url}")
         
         try:
@@ -182,6 +240,14 @@ def get_auth_cookies(driver):
 def extract_via_api(driver, data_inicio, data_fim, pais_id):
     """Extrai dados via API direta do EcomHub - COM SUPORTE A TODOS OS PAÍSES + NOVOS PAÍSES"""
     logger.info("🚀 Extraindo via API direta...")
+    
+    # Verificar se o driver ainda está ativo antes de prosseguir
+    try:
+        driver.current_url
+        logger.info("✅ Driver ativo - prosseguindo com extração")
+    except Exception as e:
+        logger.error(f"❌ Driver inativo: {e}")
+        raise Exception("Sessão do Chrome perdida durante extração")
     
     # Obter cookies após login
     cookies = get_auth_cookies(driver)
@@ -316,8 +382,18 @@ def extract_via_api(driver, data_inicio, data_fim, pais_id):
     return all_orders
 
 def extract_orders_for_tracking(driver, data_inicio, data_fim, pais_id):
-    """Extrai dados COMPLETOS para tracking de status de pedidos"""
+    """Extrai dados COMPLETOS para tracking de status de pedidos - APENAS STATUS ATIVOS"""
     logger.info(f"🔍 Extraindo dados para tracking - {data_inicio} a {data_fim}, País: {pais_id}")
+    
+    # Status ativos que precisam de monitoramento (baseado nos dados reais da EcomHub)
+    STATUS_ATIVOS = [
+        'processing', 'shipped', 'issue', 'returning'
+    ]
+    
+    # Status finalizados que IGNORAMOS (otimização)
+    STATUS_FINALIZADOS = ['delivered', 'returned', 'cancelled', 'canceled', 'cancelado']
+    
+    logger.info(f"📊 Buscando apenas status ativos: {STATUS_ATIVOS}")
     
     cookies = {}
     for cookie in driver.get_cookies():
@@ -338,13 +414,15 @@ def extract_orders_for_tracking(driver, data_inicio, data_fim, pais_id):
     for current_pais_id in paises_processar:
         logger.info(f"🔍 Processando país {current_pais_id}...")
         
+        # Filtro DIRETO na API da EcomHub - apenas status ativos
         conditions = {
             "orders": {
                 "date": {
                     "start": data_inicio,
                     "end": data_fim
                 },
-                "shippingCountry_id": int(current_pais_id)
+                "shippingCountry_id": int(current_pais_id),
+                "status": STATUS_ATIVOS  # FILTRO DIRETO NA API!
             }
         }
         
@@ -502,7 +580,8 @@ def extract_orders_for_tracking(driver, data_inicio, data_fim, pais_id):
                 logger.error(f"❌ Erro página {page} do país {current_pais_id}: {e}")
                 break
     
-    logger.info(f"✅ Tracking: {len(all_orders)} pedidos extraídos")
+    logger.info(f"✅ Tracking: {len(all_orders)} pedidos ATIVOS extraídos (filtro otimizado)")
+    logger.info(f"📊 Status filtrados: {STATUS_ATIVOS}")
     return all_orders
 
 def process_effectiveness_data(orders_data, incluir_pais=False):
@@ -808,6 +887,24 @@ async def pedidos_status_tracking(request: TrackingRequest):
 async def root():
     return {"message": "EcomHub Selenium Automation Server", "status": "running"}
 
+def safe_driver_operation(driver_func):
+    """Decorator para operações seguras com retry em caso de falha de sessão"""
+    def wrapper(*args, **kwargs):
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                return driver_func(*args, **kwargs)
+            except Exception as e:
+                error_msg = str(e).lower()
+                if any(keyword in error_msg for keyword in ["session", "disconnected", "chrome", "invalid"]):
+                    if attempt < max_retries - 1:
+                        logger.warning(f"🔄 Tentativa {attempt + 1} - Erro de sessão detectado: {e}")
+                        time.sleep(3)
+                        continue
+                raise e
+        return None
+    return wrapper
+
 @app.post("/api/processar-ecomhub/", response_model=ProcessResponse)
 async def processar_ecomhub(request: ProcessRequest):
     """Endpoint principal - COM SUPORTE A TODOS OS PAÍSES + NOVOS PAÍSES"""
@@ -821,13 +918,19 @@ async def processar_ecomhub(request: ProcessRequest):
     driver = None
     try:
         headless = os.getenv("ENVIRONMENT") != "local"
-        driver = create_driver(headless=headless)
         
-        # Fazer login
-        login_ecomhub(driver)
+        @safe_driver_operation
+        def _create_and_process():
+            nonlocal driver
+            driver = create_driver(headless=headless)
+            
+            # Fazer login com retry
+            login_ecomhub(driver)
+            
+            # Extrair dados via API direta
+            return extract_via_api(driver, request.data_inicio, request.data_fim, request.pais_id)
         
-        # Extrair dados via API direta
-        orders_data = extract_via_api(driver, request.data_inicio, request.data_fim, request.pais_id)
+        orders_data = _create_and_process()
         
         if not orders_data:
             return ProcessResponse(

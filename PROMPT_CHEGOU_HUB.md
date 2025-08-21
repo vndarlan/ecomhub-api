@@ -9,6 +9,7 @@ A API da EcomHub não fornece histórico de mudanças de status dos pedidos, ape
 ## INTEGRAÇÃO COM API EXISTENTE
 - **Endpoint disponível:** `POST /api/pedidos-status-tracking/`
 - **Mesmo servidor:** Usar a mesma URL base dos outros endpoints do projeto ecomhub-efetividade
+- **IMPORTANTE:** A API já filtra e retorna APENAS pedidos com status ativos (não finalizados)
 - **Parâmetros de entrada:**
   ```json
   {
@@ -21,12 +22,21 @@ A API da EcomHub não fornece histórico de mudanças de status dos pedidos, ape
   ```json
   {
     "status": "success",
-    "pedidos": [array de objetos com dados completos],
+    "pedidos": [apenas pedidos ativos - processing, shipped, issue, etc],
     "total_pedidos": 123,
     "data_sincronizacao": "2025-08-20 14:30:00",
     "pais_processado": "Espanha"
   }
   ```
+
+**Status Ativos Retornados:**
+- `processing` - Pedido sendo processado
+- `shipped` - Em trânsito com transportadora
+- `issue` - Com problemas de entrega
+- `returning` - Retornando ao remetente
+
+**Status Ignorados (Otimização):**
+- `delivered`, `returned`, `cancelled` - Não retornados pela API
 
 ## DADOS IMPORTANTES DE CADA PEDIDO
 Cada pedido na resposta contém:
