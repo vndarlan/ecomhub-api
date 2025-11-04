@@ -966,131 +966,11 @@ async def authenticate():
             except:
                 pass
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
 async def root():
-    """Página inicial com documentação dos endpoints"""
-    html = """
-    <!DOCTYPE html>
-    <html lang="pt-BR">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>EcomHub API - Documentação</title>
-        <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-                padding: 20px;
-            }
-            .container {
-                max-width: 900px;
-                margin: 0 auto;
-                background: white;
-                border-radius: 15px;
-                padding: 40px;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            }
-            h1 {
-                color: #667eea;
-                margin-bottom: 10px;
-                font-size: 2.5em;
-            }
-            .subtitle {
-                color: #666;
-                margin-bottom: 30px;
-                font-size: 1.1em;
-            }
-            .endpoint-card {
-                background: #f8f9fa;
-                border-left: 4px solid #667eea;
-                padding: 20px;
-                margin: 20px 0;
-                border-radius: 8px;
-            }
-            .method {
-                display: inline-block;
-                padding: 5px 12px;
-                border-radius: 5px;
-                font-weight: bold;
-                margin-right: 10px;
-                color: white;
-            }
-            .post { background: #28a745; }
-            .get { background: #17a2b8; }
-            code {
-                background: #2d2d2d;
-                color: #f8f8f2;
-                padding: 2px 6px;
-                border-radius: 3px;
-                font-family: 'Courier New', monospace;
-            }
-            .link {
-                display: inline-block;
-                margin: 10px 10px 10px 0;
-                padding: 10px 20px;
-                background: #667eea;
-                color: white;
-                text-decoration: none;
-                border-radius: 5px;
-                transition: background 0.3s;
-            }
-            .link:hover {
-                background: #5568d3;
-            }
-            h2 {
-                color: #34495e;
-                margin-top: 30px;
-                margin-bottom: 15px;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>🔐 EcomHub API</h1>
-            <p class="subtitle">Serviço de autenticação e processamento de pedidos EcomHub</p>
-
-            <h2>📋 Endpoints Disponíveis</h2>
-
-            <div class="endpoint-card">
-                <span class="method post">POST</span>
-                <strong>/api/auth</strong>
-                <p style="margin-top: 10px;">Retorna cookies e headers de autenticação da EcomHub.</p>
-                <p style="margin-top: 5px; color: #666;">Use este endpoint para obter tokens automaticamente via n8n ou outros sistemas.</p>
-            </div>
-
-            <div class="endpoint-card">
-                <span class="method post">POST</span>
-                <strong>/api/processar-ecomhub/</strong>
-                <p style="margin-top: 10px;">Processa pedidos e calcula efetividade por período e país.</p>
-                <p style="margin-top: 5px; color: #666;">Parâmetros: data_inicio, data_fim, pais_id</p>
-            </div>
-
-            <div class="endpoint-card">
-                <span class="method post">POST</span>
-                <strong>/api/pedidos-status-tracking/</strong>
-                <p style="margin-top: 10px;">Retorna lista completa de pedidos com tracking de status.</p>
-                <p style="margin-top: 5px; color: #666;">Parâmetros: data_inicio, data_fim, pais_id</p>
-            </div>
-
-            <h2>📚 Documentação</h2>
-            <a href="/docs" class="link">📖 Swagger UI - Documentação Interativa</a>
-            <a href="/api-ecomhub-docs" class="link">🌐 Documentação API EcomHub</a>
-
-            <h2>💡 Exemplo de Uso no n8n</h2>
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px;">
-                <p><strong>1. Obter Autenticação:</strong></p>
-                <p style="margin-left: 20px;">POST → <code>https://ecomhub-selenium-production.up.railway.app/api/auth</code></p>
-                <br>
-                <p><strong>2. Usar tokens na API EcomHub:</strong></p>
-                <p style="margin-left: 20px;">Use os cookies e headers retornados para fazer requisições à <code>https://api.ecomhub.app/api/orders</code></p>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    return HTMLResponse(content=html)
+    """Redireciona para documentação Swagger"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/docs")
 
 @app.get("/api-ecomhub-docs", response_class=HTMLResponse)
 async def ecomhub_api_docs():
@@ -1263,46 +1143,72 @@ Cookie: token=...; e_token=...; refresh_token=...</code></pre>
                         <td><code>offset</code></td>
                         <td>integer</td>
                         <td>Sim</td>
-                        <td>Número da página (0, 1, 2, ...)</td>
+                        <td><strong>Paginação:</strong> Qual página buscar. Use 0 para primeira página, 1 para segunda, etc. Cada página retorna até 48 pedidos.</td>
                     </tr>
                     <tr>
                         <td><code>orderBy</code></td>
                         <td>string</td>
-                        <td>Não</td>
-                        <td>Campo para ordenação (use "null" para padrão)</td>
+                        <td>Sim</td>
+                        <td><strong>Ordenação:</strong> Campo para ordenar (ex: "date", "price"). Use <code>"null"</code> (string) para ordem padrão da EcomHub.</td>
                     </tr>
                     <tr>
                         <td><code>orderDirection</code></td>
                         <td>string</td>
-                        <td>Não</td>
-                        <td>Direção da ordenação (use "null" para padrão)</td>
+                        <td>Sim</td>
+                        <td><strong>Direção:</strong> "asc" (crescente) ou "desc" (decrescente). Use <code>"null"</code> (string) para padrão.</td>
                     </tr>
                     <tr>
                         <td><code>conditions</code></td>
                         <td>JSON string</td>
                         <td>Sim</td>
-                        <td>Filtros de data e país (ver exemplos)</td>
+                        <td><strong>Filtros:</strong> JSON stringificado com filtros de data e país. Veja estrutura abaixo.</td>
                     </tr>
                     <tr>
                         <td><code>search</code></td>
                         <td>string</td>
                         <td>Não</td>
-                        <td>Termo de busca (deixe vazio se não usar)</td>
+                        <td><strong>Busca:</strong> Termo para buscar nos pedidos (número do pedido, nome do cliente, etc). Deixe vazio <code>""</code> se não usar.</td>
                     </tr>
                 </tbody>
             </table>
 
+            <div class="info" style="margin-top: 20px;">
+                <strong>💡 Dica:</strong> Para uso básico, sempre use:
+                <ul style="margin-left: 20px; margin-top: 10px;">
+                    <li><code>offset</code> = 0 (primeira página)</li>
+                    <li><code>orderBy</code> = "null" (ordem padrão)</li>
+                    <li><code>orderDirection</code> = "null" (ordem padrão)</li>
+                    <li><code>search</code> = "" (sem busca)</li>
+                    <li><code>conditions</code> = defina apenas data e país</li>
+                </ul>
+            </div>
+
             <h3>Estrutura do <code>conditions</code></h3>
-            <p>O parâmetro conditions deve ser um JSON stringificado com a seguinte estrutura:</p>
+            <p>O parâmetro <code>conditions</code> é um <strong>JSON convertido em string</strong> que define os filtros da busca:</p>
+
             <pre><code>{
   "orders": {
     "date": {
-      "start": "2025-08-01",   // Data início (YYYY-MM-DD)
-      "end": "2025-08-20"      // Data fim (YYYY-MM-DD)
+      "start": "2025-08-01",   // Data início (formato YYYY-MM-DD)
+      "end": "2025-08-20"      // Data fim (formato YYYY-MM-DD)
     },
-    "shippingCountry_id": [164, 41, 66]  // Array de IDs de países
+    "shippingCountry_id": [164, 41, 66]  // Array com IDs dos países
   }
 }</code></pre>
+
+            <div class="info" style="margin-top: 15px;">
+                <strong>⚠️ Importante:</strong>
+                <ul style="margin-left: 20px; margin-top: 10px;">
+                    <li>O <code>conditions</code> deve ser uma <strong>string</strong>, não um objeto JSON direto</li>
+                    <li>No n8n, use aspas duplas dentro do JSON: <code>{"orders":{"date":{...}}}</code></li>
+                    <li>O período de datas inclui ambos os dias (início e fim)</li>
+                    <li>Você pode filtrar por um país <code>[164]</code> ou vários <code>[164, 82, 66]</code></li>
+                </ul>
+            </div>
+
+            <h4 style="margin-top: 25px;">Exemplo no n8n:</h4>
+            <p>No campo <strong>Query Parameters</strong> do nó HTTP Request:</p>
+            <pre><code>conditions: {"orders":{"date":{"start":"2025-08-01","end":"2025-08-31"},"shippingCountry_id":[164]}}</code></pre>
 
             <h3>IDs de Países Suportados</h3>
             <table>
@@ -1397,15 +1303,32 @@ Cookie: token=...; e_token=...; refresh_token=...</code></pre>
                 <li><code>cancelled</code> - Cancelado</li>
             </ul>
 
-            <h2>🔄 Paginação</h2>
+            <h2>🔄 Paginação - Como Buscar Todos os Pedidos</h2>
+
+            <p>A API EcomHub retorna no <strong>máximo 48 pedidos por requisição</strong>. Para buscar todos os pedidos de um período, você precisa fazer múltiplas requisições.</p>
+
             <div class="info">
-                <p><strong>Como funciona:</strong></p>
-                <ul style="margin-left: 20px; margin-top: 10px;">
-                    <li>Cada requisição retorna até 48 pedidos</li>
-                    <li>Use <code>offset=0</code> para primeira página</li>
-                    <li>Incremente o offset para próximas páginas (1, 2, 3...)</li>
-                    <li>Continue até a API retornar array vazio</li>
-                </ul>
+                <p><strong>📝 Passo a passo:</strong></p>
+                <ol style="margin-left: 20px; margin-top: 10px; line-height: 1.8;">
+                    <li>Faça a primeira requisição com <code>offset=0</code></li>
+                    <li>Se receber 48 pedidos, há mais dados. Faça nova requisição com <code>offset=1</code></li>
+                    <li>Continue incrementando o offset (2, 3, 4...) até a API retornar:
+                        <ul style="margin-left: 20px;">
+                            <li>Array vazio <code>[]</code>, ou</li>
+                            <li>Menos de 48 pedidos (significa que é a última página)</li>
+                        </ul>
+                    </li>
+                </ol>
+            </div>
+
+            <h3>Exemplo Visual:</h3>
+            <pre><code>Requisição 1: offset=0 → Retorna 48 pedidos → Continuar
+Requisição 2: offset=1 → Retorna 48 pedidos → Continuar
+Requisição 3: offset=2 → Retorna 35 pedidos → Última página (menos de 48)
+Total: 131 pedidos</code></pre>
+
+            <div class="warning">
+                <strong>⚠️ Dica:</strong> No n8n, use um loop para buscar automaticamente todas as páginas até receber array vazio.
             </div>
 
             <h2>💻 Exemplo Prático (n8n)</h2>
