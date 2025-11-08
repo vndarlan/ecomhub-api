@@ -10,3 +10,6 @@ cryptography==41.0.7
 # Token Sync Dependencies
 apscheduler==3.10.4
 httpx==0.25.0
+
+# Security Dependencies
+slowapi==0.1.9

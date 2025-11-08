@@ -1,6 +1,8 @@
 # main.py - COM SUPORTE A "TODOS OS PAÍSES" + REPÚBLICA CHECA E POLÔNIA
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Security, Depends
+from fastapi.security import APIKeyHeader
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -19,11 +21,67 @@ import json
 from datetime import datetime
 from typing import Dict, Optional
 
+# Rate Limiting
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+
+    limiter = Limiter(key_func=get_remote_address)
+    RATE_LIMITING_ENABLED = True
+except ImportError:
+    limiter = None
+    RATE_LIMITING_ENABLED = False
+    print("⚠️ SlowAPI não instalado - Rate limiting desabilitado")
+
 app = FastAPI(title="EcomHub Selenium Automation", version="1.0.0")
+
+# Configurar rate limiting se disponível
+if RATE_LIMITING_ENABLED:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Configuração de logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Configuração de CORS
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "").split(",") if os.getenv("ALLOWED_ORIGINS") else ["*"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
+# Configuração de Autenticação via API Key
+API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+async def verify_api_key(api_key: str = Security(API_KEY_HEADER)) -> str:
+    """Verifica se a API Key é válida"""
+    expected_api_key = os.getenv("API_SECRET_KEY")
+
+    if not expected_api_key:
+        logger.error("API_SECRET_KEY não configurada no servidor")
+        raise HTTPException(
+            status_code=500,
+            detail="Servidor mal configurado - contate o administrador"
+        )
+
+    if not api_key:
+        raise HTTPException(
+            status_code=403,
+            detail="API Key não fornecida. Adicione o header 'X-API-Key'"
+        )
+
+    if api_key != expected_api_key:
+        raise HTTPException(
+            status_code=403,
+            detail="API Key inválida"
+        )
+
+    return api_key
 
 # Models
 class ProcessRequest(BaseModel):
@@ -62,9 +120,15 @@ class AuthResponse(BaseModel):
 
 # Configurações
 ECOMHUB_URL = "https://go.ecomhub.app/login"
-# IMPORTANTE: Usar variáveis de ambiente no Railway
-LOGIN_EMAIL = os.getenv("ECOMHUB_EMAIL", "saviomendesalvess@gmail.com")
-LOGIN_PASSWORD = os.getenv("ECOMHUB_PASSWORD", "Chegou123!")
+
+# IMPORTANTE: Credenciais obrigatórias via variáveis de ambiente
+LOGIN_EMAIL = os.getenv("ECOMHUB_EMAIL")
+LOGIN_PASSWORD = os.getenv("ECOMHUB_PASSWORD")
+
+# Validar credenciais na inicialização
+if not LOGIN_EMAIL or not LOGIN_PASSWORD:
+    logger.warning("⚠️ ECOMHUB_EMAIL ou ECOMHUB_PASSWORD não configurados")
+    logger.warning("A API funcionará mas endpoints que dependem do login falharão")
 
 PAISES_MAP = {
     "164": "Espanha",
@@ -857,7 +921,11 @@ def process_effectiveness_optimized(orders_data, incluir_pais=False):
     return result_data, stats
 
 @app.post("/api/pedidos-status-tracking/", response_model=TrackingResponse)
-async def pedidos_status_tracking(request: TrackingRequest):
+@limiter.limit("10/minute") if RATE_LIMITING_ENABLED else lambda f: f
+async def pedidos_status_tracking(
+    request: TrackingRequest,
+    api_key: str = Depends(verify_api_key)
+):
     """Endpoint específico para sistema de tracking de status de pedidos"""
     
     logger.info(f"🔍 Tracking de status: {request.data_inicio} - {request.data_fim}, País: {request.pais_id}")
@@ -898,7 +966,8 @@ async def pedidos_status_tracking(request: TrackingRequest):
             driver.quit()
 
 @app.get("/api/auth", response_model=AuthResponse)
-async def get_auth_tokens():
+@limiter.limit("30/minute") if RATE_LIMITING_ENABLED else lambda f: f
+async def get_auth_tokens(api_key: str = Depends(verify_api_key)):
     """
     Retorna os tokens de autenticação armazenados no banco de dados
 
@@ -987,7 +1056,8 @@ async def get_auth_tokens():
         )
 
 @app.get("/api/auth/status")
-async def get_auth_status():
+@limiter.limit("30/minute") if RATE_LIMITING_ENABLED else lambda f: f
+async def get_auth_status(api_key: str = Depends(verify_api_key)):
     """
     Retorna o status do sistema de sincronização de tokens
 
@@ -1447,7 +1517,11 @@ def safe_driver_operation(driver_func):
     return wrapper
 
 @app.post("/api/processar-ecomhub/", response_model=ProcessResponse)
-async def processar_ecomhub(request: ProcessRequest):
+@limiter.limit("5/minute") if RATE_LIMITING_ENABLED else lambda f: f
+async def processar_ecomhub(
+    request: ProcessRequest,
+    api_key: str = Depends(verify_api_key)
+):
     """Endpoint principal - COM SUPORTE A TODOS OS PAÍSES + NOVOS PAÍSES"""
     
     logger.info(f"Processamento: {request.data_inicio} - {request.data_fim}, País: {request.pais_id}")

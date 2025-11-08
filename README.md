@@ -1,212 +1,286 @@
-# EcomHub API - Sistema de Automação e Análise
+# EcomHub API
 
-Sistema completo de automação para extração de dados e análise de efetividade de pedidos do EcomHub, com sincronização automática de tokens.
+API REST para integração com o sistema EcomHub, fornecendo acesso automatizado a dados de pedidos e tokens de autenticação.
 
-## URL de Produção
+## Base URL
 
 ```
 https://ecomhub-selenium-production.up.railway.app
 ```
 
-## Visão Geral
+## Autenticação
 
-Este sistema oferece:
-- **Extração automatizada** de dados de pedidos do EcomHub
-- **Análise de efetividade** de entregas por produto e país
-- **Sincronização automática de tokens** a cada 2 minutos (Railway Cron)
-- **API REST** para integração com n8n, Make, Zapier e outros sistemas
-- **Suporte multi-país** (7 países europeus)
+Todas as requisições devem incluir o header `X-API-Key` com a chave de API fornecida.
 
-## Principais Funcionalidades
+```http
+X-API-Key: sua-chave-api-aqui
+```
 
-### 1. Análise de Efetividade de Pedidos
-- Cálculo de taxa de entrega por produto
-- Análise de status de pedidos (entregue, em trânsito, devolvido, etc.)
-- Visualização otimizada com métricas agrupadas
-- Suporte para análise individual ou multi-país
+## Limites de Taxa
 
-### 2. Sincronização Automática de Tokens
-- Railway Cron executa a cada 2 minutos
-- Mantém tokens sempre válidos (expiram em 3 minutos)
-- Envia tokens para sistemas externos (quando configurado)
-- Logs isolados para fácil monitoramento
+| Endpoint | Limite |
+|----------|--------|
+| `/api/processar-ecomhub/` | 5 requisições/minuto |
+| `/api/pedidos-status-tracking/` | 10 requisições/minuto |
+| `/api/auth` | 30 requisições/minuto |
+| `/api/auth/status` | 30 requisições/minuto |
 
-### 3. API REST Completa
-- Endpoints para processar pedidos por período
-- Análise por país individual ou todos simultaneamente
-- Autenticação automática via Selenium
-- Respostas em JSON estruturado
+## Endpoints
 
-## Endpoints Disponíveis
+### 1. Obter Tokens de Autenticação
 
-### POST `/api/processar-ecomhub/`
-Processa pedidos do EcomHub para análise de efetividade.
+Retorna tokens válidos do EcomHub para uso direto com a API deles.
 
-**Parâmetros:**
+**GET** `/api/auth`
+
+**Headers:**
+```http
+X-API-Key: sua-chave-api
+```
+
+**Resposta de Sucesso (200):**
+```json
+{
+  "success": true,
+  "cookies": {
+    "token": "eyJ...",
+    "e_token": "eyJ...",
+    "refresh_token": "eyJ..."
+  },
+  "cookie_string": "token=eyJ...;e_token=eyJ...;refresh_token=eyJ...",
+  "headers": {
+    "Accept": "*/*",
+    "Content-Type": "application/json",
+    "Origin": "https://go.ecomhub.app",
+    "Referer": "https://go.ecomhub.app/"
+  },
+  "timestamp": "2024-11-08T15:30:00",
+  "expires_in": 120,
+  "expires_at": "2024-11-08T15:33:00",
+  "message": "Tokens válidos. Expira em 120 segundos"
+}
+```
+
+**Resposta de Erro (503):**
+```json
+{
+  "detail": "Tokens não disponíveis. Aguarde a sincronização automática"
+}
+```
+
+### 2. Processar Dados de Pedidos
+
+Extrai e processa dados de pedidos do EcomHub para análise.
+
+**POST** `/api/processar-ecomhub/`
+
+**Headers:**
+```http
+X-API-Key: sua-chave-api
+Content-Type: application/json
+```
+
+**Body:**
 ```json
 {
   "data_inicio": "2024-11-01",
   "data_fim": "2024-11-07",
-  "pais_id": "164"  // ou "todos" para processar todos os países
+  "pais_id": "164"
 }
 ```
 
-**Resposta:**
+**Parâmetros:**
+- `data_inicio` (string): Data inicial no formato YYYY-MM-DD
+- `data_fim` (string): Data final no formato YYYY-MM-DD
+- `pais_id` (string): ID do país ou "todos" para processar todos
+
+**Países Disponíveis:**
+| País | ID |
+|------|-----|
+| Espanha | 164 |
+| Croácia | 41 |
+| Grécia | 66 |
+| Itália | 82 |
+| Romênia | 142 |
+| República Checa | 44 |
+| Polônia | 139 |
+| Todos | todos |
+
+**Resposta de Sucesso (200):**
 ```json
 {
-  "total_data": [
-    {
-      "Nome Produto": "Product Name",
-      "Total_Registros": 100,
-      "Delivered": 85,
-      "Efetividade": "85.0%",
-      "País": "Spain"  // apenas quando pais_id="todos"
-    }
-  ],
-  "optimized_data": [
-    {
-      "Nome Produto": "Product Name",
-      "Finalizados": 90,
-      "Transito": 5,
-      "Problemas": 5,
-      "Efetividade_Parcial": "94.4%",
-      "Efetividade_Total": "85.0%",
-      "País": "Spain"  // apenas quando pais_id="todos"
-    }
-  ]
+  "status": "success",
+  "dados_processados": {
+    "total_data": [...],
+    "optimized_data": [...]
+  },
+  "estatisticas": {
+    "total_pedidos": 150,
+    "total_produtos": 25,
+    "tempo_processamento": "45.2s"
+  },
+  "message": "Processamento concluído com sucesso"
 }
 ```
 
-### GET `/api/auth`
-Retorna os tokens atuais (quando sincronização está ativa).
+### 3. Tracking de Status de Pedidos
 
-## Países Suportados
+Obtém informações detalhadas de status dos pedidos.
 
-| País | ID | Código |
-|------|-----|--------|
-| Spain | 164 | ES |
-| Croatia | 41 | HR |
-| Greece | 66 | GR |
-| Italy | 82 | IT |
-| Romania | 142 | RO |
-| Czech Republic | 44 | CZ |
-| Poland | 139 | PL |
+**POST** `/api/pedidos-status-tracking/`
 
-Use `"todos"` como `pais_id` para processar todos os países de uma vez.
-
-## Deploy no Railway
-
-### 1. Configurar Variáveis de Ambiente
-
-No painel do Railway, adicione:
-
-```env
-# Credenciais EcomHub (obrigatório)
-ECOMHUB_EMAIL=seu_email@exemplo.com
-ECOMHUB_PASSWORD=sua_senha
-
-# Sincronização de Tokens (obrigatório)
-TOKEN_SYNC_ENABLED=true
-
-# Integração com Chegou Hub (opcional)
-CHEGOU_HUB_WEBHOOK_URL=https://seu-webhook-url
-CHEGOU_HUB_API_KEY=sua-api-key
+**Headers:**
+```http
+X-API-Key: sua-chave-api
+Content-Type: application/json
 ```
 
-### 2. Deploy Automático
-
-Railway detecta automaticamente:
-- `Dockerfile` para build
-- `railway.json` para configurar Cron Job
-- Porta 8001 para o servidor
-
-### 3. Monitoramento
-
-**Logs do Servidor Principal:**
-```
-Services > ecomhub-api > View Logs
+**Body:**
+```json
+{
+  "data_inicio": "2024-11-01",
+  "data_fim": "2024-11-07",
+  "pais_id": "164"
+}
 ```
 
-**Logs do Cron Job (sincronização):**
-```
-Cron Jobs > Token Sync - A cada 2 minutos > View Logs
+**Resposta de Sucesso (200):**
+```json
+{
+  "status": "success",
+  "pedidos": [
+    {
+      "orderId": "12345",
+      "customerName": "João Silva",
+      "orderStatus": "delivered",
+      "trackingNumber": "BR123456789",
+      "totalAmount": 150.00,
+      "createdAt": "2024-11-01T10:00:00Z",
+      "deliveredAt": "2024-11-05T14:30:00Z"
+    }
+  ],
+  "total_pedidos": 50,
+  "data_sincronizacao": "2024-11-08T15:30:00Z",
+  "pais_processado": "Espanha"
+}
 ```
 
-## Estrutura do Projeto
+### 4. Status do Sistema
 
-```
-ecomhub-api/
-├── main.py                 # API principal com FastAPI
-├── cron_sync_tokens.py     # Script executado pelo Railway Cron
-├── railway.json            # Configuração do Cron (*/2 * * * *)
-├── token_sync/             # Módulo de sincronização de tokens
-│   ├── sync_service.py     # Lógica principal de sincronização
-│   ├── token_validator.py  # Validação de tokens JWT
-│   └── notifier.py        # Envio para sistemas externos
-├── Dockerfile              # Container para Railway
-└── requirements.txt        # Dependências Python
+Verifica o status do sistema de sincronização de tokens.
+
+**GET** `/api/auth/status`
+
+**Headers:**
+```http
+X-API-Key: sua-chave-api
 ```
 
-## Desenvolvimento Local
+**Resposta (200):**
+```json
+{
+  "status": "active",
+  "has_tokens": true,
+  "expires_in": 120,
+  "last_update": "2024-11-08 15:30:00",
+  "sync_enabled": true,
+  "sync_interval": "2 minutos",
+  "db_available": true
+}
+```
 
-### Instalação
+## Códigos de Erro
+
+| Código | Descrição |
+|--------|-----------|
+| 400 | Requisição inválida - verifique os parâmetros |
+| 403 | API Key inválida ou ausente |
+| 429 | Limite de taxa excedido |
+| 500 | Erro interno do servidor |
+| 503 | Serviço temporariamente indisponível |
+
+## Exemplos de Uso
+
+### cURL
 
 ```bash
-# Clonar repositório
-git clone https://github.com/seu-usuario/ecomhub-api.git
-cd ecomhub-api
+# Obter tokens
+curl -H "X-API-Key: sua-chave-api" \
+  https://ecomhub-selenium-production.up.railway.app/api/auth
 
-# Criar ambiente virtual
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# ou
-venv\Scripts\activate  # Windows
-
-# Instalar dependências
-pip install -r requirements.txt
+# Processar pedidos
+curl -X POST \
+  -H "X-API-Key: sua-chave-api" \
+  -H "Content-Type: application/json" \
+  -d '{"data_inicio":"2024-11-01","data_fim":"2024-11-07","pais_id":"164"}' \
+  https://ecomhub-selenium-production.up.railway.app/api/processar-ecomhub/
 ```
 
-### Executar Localmente
-
-```bash
-# Com browser visível (desenvolvimento)
-ENVIRONMENT=local python main.py
-
-# Modo headless (produção)
-python main.py
-```
-
-O servidor estará disponível em `http://localhost:8001`
-
-## Arquitetura Técnica
-
-### Fluxo de Autenticação
-1. Selenium automatiza login no EcomHub
-2. Captura cookies de sessão (token, e_token, refresh_token)
-3. Usa cookies para chamar API diretamente
-4. Cron renova tokens antes de expirar (3 minutos)
-
-### Processamento de Dados
-1. Extrai pedidos via API `/api/orders`
-2. Processa status e agrupa por produto
-3. Calcula métricas de efetividade
-4. Retorna duas visualizações: total e otimizada
-
-### Cálculo de Efetividade
-- **Efetividade Parcial**: (Entregues / Finalizados) × 100
-- **Efetividade Total**: (Entregues / Total de Pedidos) × 100
-
-## Integrações
-
-### n8n / Make / Zapier
-Use o endpoint `/api/processar-ecomhub/` com método POST:
+### JavaScript/Fetch
 
 ```javascript
-// Exemplo n8n
+// Obter tokens
+const response = await fetch('https://ecomhub-selenium-production.up.railway.app/api/auth', {
+  headers: {
+    'X-API-Key': 'sua-chave-api'
+  }
+});
+const tokens = await response.json();
+
+// Processar pedidos
+const response = await fetch('https://ecomhub-selenium-production.up.railway.app/api/processar-ecomhub/', {
+  method: 'POST',
+  headers: {
+    'X-API-Key': 'sua-chave-api',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    data_inicio: '2024-11-01',
+    data_fim: '2024-11-07',
+    pais_id: '164'
+  })
+});
+const data = await response.json();
+```
+
+### Python/Requests
+
+```python
+import requests
+
+# Configurar headers
+headers = {
+    'X-API-Key': 'sua-chave-api'
+}
+
+# Obter tokens
+response = requests.get(
+    'https://ecomhub-selenium-production.up.railway.app/api/auth',
+    headers=headers
+)
+tokens = response.json()
+
+# Processar pedidos
+response = requests.post(
+    'https://ecomhub-selenium-production.up.railway.app/api/processar-ecomhub/',
+    headers=headers,
+    json={
+        'data_inicio': '2024-11-01',
+        'data_fim': '2024-11-07',
+        'pais_id': '164'
+    }
+)
+data = response.json()
+```
+
+### n8n Integration
+
+```json
 {
   "method": "POST",
   "url": "https://ecomhub-selenium-production.up.railway.app/api/processar-ecomhub/",
   "headers": {
+    "X-API-Key": "{{$credentials.ecomhub.apiKey}}",
     "Content-Type": "application/json"
   },
   "body": {
@@ -217,23 +291,13 @@ Use o endpoint `/api/processar-ecomhub/` com método POST:
 }
 ```
 
-## Solução de Problemas
+## Sobre a Análise de Efetividade
 
-### Tokens expirando
-- Verifique se `TOKEN_SYNC_ENABLED=true`
-- Confirme que o Cron está executando a cada 2 minutos
-- Verifique logs do Cron Job no Railway
+A API inclui funcionalidades de análise de efetividade de entregas, calculando métricas como:
 
-### Login falhando
-- Verifique credenciais nas variáveis de ambiente
-- Confirme que o EcomHub não mudou interface
-- Verifique logs para mensagens de erro específicas
+- **Taxa de entrega por produto**: Percentual de pedidos entregues com sucesso
+- **Visualização otimizada**: Agrupa status em categorias (Finalizados, Em Trânsito, Problemas)
+- **Efetividade Parcial**: (Entregues / Finalizados) × 100
+- **Efetividade Total**: (Entregues / Total de Pedidos) × 100
 
-### Cron não executando
-- Confirme que `railway.json` está no repositório
-- Verifique aba "Cron Jobs" no Railway
-- Revise logs para erros de execução
-
-## Suporte
-
-Para problemas ou sugestões, abra uma issue no GitHub.
+Estas métricas são retornadas automaticamente nos dados processados pelo endpoint `/api/processar-ecomhub/`.
