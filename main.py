@@ -17,7 +17,7 @@ import requests
 import urllib.parse
 import json
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Optional
 
 app = FastAPI(title="EcomHub Selenium Automation", version="1.0.0")
 
