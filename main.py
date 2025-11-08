@@ -1,5 +1,5 @@
 # main.py - COM SUPORTE A "TODOS OS PAÍSES" + REPÚBLICA CHECA E POLÔNIA
-from fastapi import FastAPI, HTTPException, Security, Depends
+from fastapi import FastAPI, HTTPException, Security, Depends, Request
 from fastapi.security import APIKeyHeader
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -923,15 +923,16 @@ def process_effectiveness_optimized(orders_data, incluir_pais=False):
 @app.post("/api/pedidos-status-tracking/", response_model=TrackingResponse)
 @limiter.limit("10/minute") if RATE_LIMITING_ENABLED else lambda f: f
 async def pedidos_status_tracking(
-    request: TrackingRequest,
+    request_body: TrackingRequest,
+    request: Request,
     api_key: str = Depends(verify_api_key)
 ):
     """Endpoint específico para sistema de tracking de status de pedidos"""
     
-    logger.info(f"🔍 Tracking de status: {request.data_inicio} - {request.data_fim}, País: {request.pais_id}")
-    
+    logger.info(f"🔍 Tracking de status: {request_body.data_inicio} - {request_body.data_fim}, País: {request_body.pais_id}")
+
     # Validação do país
-    if request.pais_id not in PAISES_MAP:
+    if request_body.pais_id not in PAISES_MAP:
         raise HTTPException(status_code=400, detail="País não suportado")
     
     driver = None
@@ -943,7 +944,7 @@ async def pedidos_status_tracking(
         login_ecomhub(driver)
         
         # Extrair dados completos via API
-        orders_data = extract_orders_for_tracking(driver, request.data_inicio, request.data_fim, request.pais_id)
+        orders_data = extract_orders_for_tracking(driver, request_body.data_inicio, request_body.data_fim, request_body.pais_id)
         
         # Preparar resposta
         from datetime import datetime
@@ -954,7 +955,7 @@ async def pedidos_status_tracking(
             pedidos=orders_data,
             total_pedidos=len(orders_data),
             data_sincronizacao=data_sincronizacao,
-            pais_processado=PAISES_MAP[request.pais_id]
+            pais_processado=PAISES_MAP[request_body.pais_id]
         )
         
     except Exception as e:
@@ -967,7 +968,7 @@ async def pedidos_status_tracking(
 
 @app.get("/api/auth", response_model=AuthResponse)
 @limiter.limit("30/minute") if RATE_LIMITING_ENABLED else lambda f: f
-async def get_auth_tokens(api_key: str = Depends(verify_api_key)):
+async def get_auth_tokens(request: Request, api_key: str = Depends(verify_api_key)):
     """
     Retorna os tokens de autenticação armazenados no banco de dados
 
@@ -1057,7 +1058,7 @@ async def get_auth_tokens(api_key: str = Depends(verify_api_key)):
 
 @app.get("/api/auth/status")
 @limiter.limit("30/minute") if RATE_LIMITING_ENABLED else lambda f: f
-async def get_auth_status(api_key: str = Depends(verify_api_key)):
+async def get_auth_status(request: Request, api_key: str = Depends(verify_api_key)):
     """
     Retorna o status do sistema de sincronização de tokens
 
@@ -1519,15 +1520,16 @@ def safe_driver_operation(driver_func):
 @app.post("/api/processar-ecomhub/", response_model=ProcessResponse)
 @limiter.limit("5/minute") if RATE_LIMITING_ENABLED else lambda f: f
 async def processar_ecomhub(
-    request: ProcessRequest,
+    request_body: ProcessRequest,
+    request: Request,
     api_key: str = Depends(verify_api_key)
 ):
     """Endpoint principal - COM SUPORTE A TODOS OS PAÍSES + NOVOS PAÍSES"""
-    
-    logger.info(f"Processamento: {request.data_inicio} - {request.data_fim}, País: {request.pais_id}")
+
+    logger.info(f"Processamento: {request_body.data_inicio} - {request_body.data_fim}, País: {request_body.pais_id}")
     
     # VALIDAÇÃO MODIFICADA: Aceitar "todos" ou países específicos (incluindo novos)
-    if request.pais_id not in PAISES_MAP:
+    if request_body.pais_id not in PAISES_MAP:
         raise HTTPException(status_code=400, detail="País não suportado")
     
     driver = None
@@ -1543,7 +1545,7 @@ async def processar_ecomhub(
             login_ecomhub(driver)
             
             # Extrair dados via API direta
-            return extract_via_api(driver, request.data_inicio, request.data_fim, request.pais_id)
+            return extract_via_api(driver, request_body.data_inicio, request_body.data_fim, request_body.pais_id)
         
         orders_data = _create_and_process()
         
@@ -1577,7 +1579,7 @@ async def processar_ecomhub(
             status="success",
             dados_processados=response_data,
             estatisticas=stats_total,
-            message=f"Processados {stats_total['total_registros']} pedidos de {PAISES_MAP[request.pais_id]}"
+            message=f"Processados {stats_total['total_registros']} pedidos de {PAISES_MAP[request_body.pais_id]}"
         )
         
     except Exception as e:
