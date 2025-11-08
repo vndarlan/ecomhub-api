@@ -4,6 +4,7 @@ Usa SQLite para persistência simples e eficiente
 """
 import sqlite3
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 import logging
@@ -12,10 +13,23 @@ from typing import Optional, Dict
 logger = logging.getLogger(__name__)
 
 class TokenDatabase:
-    def __init__(self, db_path: str = "tokens.db"):
+    def __init__(self, db_path: str = None):
         """Inicializa conexão com banco SQLite"""
+        # No Railway, usar /tmp que tem permissão de escrita
+        if db_path is None:
+            if os.getenv("RAILWAY_ENVIRONMENT"):
+                db_path = "/tmp/tokens.db"
+            else:
+                db_path = "tokens.db"
+
         self.db_path = Path(db_path)
-        self.init_database()
+        self.db_available = False
+        try:
+            self.init_database()
+            self.db_available = True
+        except Exception as e:
+            logger.error(f"❌ Erro ao inicializar banco de dados: {e}")
+            logger.warning("⚠️ Sistema funcionará sem persistência de tokens")
 
     def init_database(self):
         """Cria tabela de tokens se não existir"""
@@ -56,6 +70,10 @@ class TokenDatabase:
             cookies: Dict com todos os cookies (opcional)
             expires_in: Tempo de expiração em segundos
         """
+        if not self.db_available:
+            logger.warning("Banco de dados não disponível, tokens não serão persistidos")
+            return False
+
         try:
             expires_at = datetime.now().timestamp() + expires_in
             cookies_json = json.dumps(cookies) if cookies else None
@@ -86,6 +104,10 @@ class TokenDatabase:
         Returns:
             Dict com tokens e metadados ou None se não houver
         """
+        if not self.db_available:
+            logger.warning("Banco de dados não disponível")
+            return None
+
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
@@ -141,19 +163,30 @@ class TokenDatabase:
 
     def get_status(self) -> Dict:
         """Retorna status do sistema de tokens"""
+        if not self.db_available:
+            return {
+                'status': 'database_unavailable',
+                'has_tokens': False,
+                'expires_in': 0,
+                'last_update': None,
+                'db_available': False
+            }
+
         tokens = self.get_tokens()
         if tokens:
             return {
                 'status': 'active' if tokens['is_valid'] else 'expired',
                 'has_tokens': True,
                 'expires_in': tokens['expires_in'],
-                'last_update': tokens['updated_at']
+                'last_update': tokens['updated_at'],
+                'db_available': True
             }
         return {
             'status': 'no_tokens',
             'has_tokens': False,
             'expires_in': 0,
-            'last_update': None
+            'last_update': None,
+            'db_available': True
         }
 
 # Instância global (singleton)

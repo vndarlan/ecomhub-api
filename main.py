@@ -912,8 +912,15 @@ async def get_auth_tokens():
         logger.info("📖 Lendo tokens do banco de dados...")
 
         # Importar e usar o banco de dados
-        from token_sync.database import get_database
-        db = get_database()
+        try:
+            from token_sync.database import get_database
+            db = get_database()
+        except Exception as e:
+            logger.error(f"❌ Erro ao acessar banco de dados: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail="Sistema de tokens temporariamente indisponível"
+            )
 
         # Obter tokens do banco
         tokens_data = db.get_tokens()
@@ -991,11 +998,19 @@ async def get_auth_status():
     - Status da sincronização
     """
     try:
-        from token_sync.database import get_database
-        db = get_database()
-
-        # Obter status do banco
-        status = db.get_status()
+        try:
+            from token_sync.database import get_database
+            db = get_database()
+            # Obter status do banco
+            status = db.get_status()
+        except Exception as e:
+            logger.error(f"Erro ao acessar banco de dados: {e}")
+            status = {
+                'status': 'database_error',
+                'has_tokens': False,
+                'db_available': False,
+                'error': str(e)
+            }
 
         # Adicionar informações da thread se estiver rodando
         if os.getenv("TOKEN_SYNC_ENABLED", "false").lower() == "true":
@@ -1508,15 +1523,23 @@ if __name__ == "__main__":
         logger.info("🔄 Iniciando serviço de sincronização de tokens...")
         try:
             from threading import Thread
-            from token_sync.scheduler import start_background_sync
+
+            def safe_start_sync():
+                """Função wrapper para proteger o início da sincronização"""
+                try:
+                    from token_sync.scheduler import start_background_sync
+                    start_background_sync()
+                except Exception as sync_error:
+                    logger.error(f"❌ Erro na thread de sincronização: {sync_error}")
+                    logger.warning("⚠️ Sincronização falhando, mas servidor continua funcionando")
 
             # Iniciar em thread separada para não bloquear o servidor
-            sync_thread = Thread(target=start_background_sync, daemon=True, name="TokenSyncThread")
+            sync_thread = Thread(target=safe_start_sync, daemon=True, name="TokenSyncThread")
             sync_thread.start()
             logger.info("✅ Serviço de sincronização iniciado em background (a cada 2 minutos)")
         except Exception as e:
             logger.error(f"❌ Erro ao iniciar sincronização de tokens: {e}")
-            logger.info("Continuando sem sincronização automática...")
+            logger.info("⚠️ Continuando sem sincronização automática...")
 
     # Iniciar servidor FastAPI normalmente
     port = int(os.getenv("PORT", 8001))
