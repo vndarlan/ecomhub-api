@@ -201,8 +201,10 @@ def create_driver(headless=True):
     options.add_argument("--log-level=3")  # Fatal only
     options.add_argument("--silent")
 
-    # Single process mode para economia de recursos
-    options.add_argument("--single-process")
+    # Flags de estabilidade para containers (Railway)
+    options.add_argument("--disable-dev-shm-usage")  # Crucial para evitar crashes em containers
+    options.add_argument("--disable-software-rasterizer")
+    options.add_argument("--disable-setuid-sandbox")
 
     try:
         driver = webdriver.Chrome(options=options)

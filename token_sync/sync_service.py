@@ -273,10 +273,6 @@ class TokenSyncService:
             logger.info(f"   Total de syncs: {self.sync_count}")
             logger.info(f"   Sucessos: {self.success_count}")
             logger.info(f"   Taxa de sucesso: {(self.success_count/self.sync_count)*100:.1f}%")
-
-            if not chegou_hub_success and CHEGOU_HUB_ENABLED:
-                logger.warning("⚠️ Tokens obtidos mas não enviados ao Chegou Hub")
-
             logger.info("=" * 60)
             return True
 
