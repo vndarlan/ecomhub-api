@@ -1686,6 +1686,29 @@ async def processar_ecomhub_legacy(
         if driver:
             driver.quit()
 
+# ====================================
+# ENDPOINT DE COMPATIBILIDADE #2 (TEMPORÁRIO)
+# ====================================
+# Backend do Chegou Hub usa este path com /api/ no início
+@app.post("/api/metricas/ecomhub/analises/processar_selenium/")
+@limiter.limit("5/minute") if RATE_LIMITING_ENABLED else lambda f: f
+async def processar_ecomhub_legacy_api(
+    request_body: ProcessRequest,
+    request: Request
+):
+    """
+    ENDPOINT DE COMPATIBILIDADE #2 (TEMPORÁRIO) - SEM AUTENTICAÇÃO
+
+    ⚠️ Backend do Chegou Hub usa este path: /api/metricas/ecomhub/analises/processar_selenium/
+    ⚠️ Este endpoint NÃO requer autenticação para manter compatibilidade.
+
+    Após atualização do Chegou Hub, REMOVER ESTE ENDPOINT!
+    """
+    logger.warning("⚠️ [LEGACY ENDPOINT #2] /api/metricas/ecomhub/analises/processar_selenium/ (SEM AUTENTICAÇÃO)")
+
+    # Redirecionar para o endpoint legacy principal
+    return await processar_ecomhub_legacy(request_body, request)
+
 if __name__ == "__main__":
     import uvicorn
 
