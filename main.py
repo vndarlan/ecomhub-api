@@ -196,15 +196,22 @@ def create_driver(headless=True):
     options.add_experimental_option("useAutomationExtension", False)
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_argument("--disable-blink-features=AutomationControlled")
-    
+
+    # Configurações de log
+    options.add_argument("--log-level=3")  # Fatal only
+    options.add_argument("--silent")
+
+    # Single process mode para economia de recursos
+    options.add_argument("--single-process")
+
     try:
         driver = webdriver.Chrome(options=options)
         logger.info("✅ ChromeDriver criado para Railway")
-        
-        # Configurações de timeout mais conservadoras
-        driver.implicitly_wait(15)
-        driver.set_page_load_timeout(45)
-        driver.set_script_timeout(30)
+
+        # Configurações de timeout AUMENTADAS para evitar falhas
+        driver.implicitly_wait(20)
+        driver.set_page_load_timeout(90)  # Aumentado de 45 para 90
+        driver.set_script_timeout(60)     # Aumentado de 30 para 60
         
         # Adicionar user agent para parecer mais natural
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")

@@ -125,8 +125,15 @@ class TokenSyncService:
                 try:
                     driver.quit()
                     logger.debug("Driver fechado")
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Erro ao fechar driver: {e}")
+                    # Forçar encerramento de processos Chrome órfãos
+                    try:
+                        import subprocess
+                        subprocess.run(['pkill', '-9', 'chrome'], stderr=subprocess.DEVNULL, timeout=5)
+                        subprocess.run(['pkill', '-9', 'chromedriver'], stderr=subprocess.DEVNULL, timeout=5)
+                    except:
+                        pass
 
     def validate_and_store_tokens(self, tokens_data):
         """
@@ -293,11 +300,18 @@ class TokenSyncService:
 
     def perform_sync_with_retry(self):
         """
-        Realiza sincronização com sistema de retry.
+        Realiza sincronização com sistema de retry e circuit breaker.
 
         Returns:
             bool: True se eventualmente bem-sucedida, False se todas tentativas falharam
         """
+        # Circuit breaker: se muitos erros consecutivos, aguardar mais tempo
+        if self.consecutive_errors > 50:
+            wait_minutes = min(self.consecutive_errors // 10, 30)  # máximo 30 min
+            logger.warning(f"⏸️ CIRCUIT BREAKER: {self.consecutive_errors} erros consecutivos")
+            logger.warning(f"⏸️ Aguardando {wait_minutes} minutos antes de tentar novamente...")
+            time.sleep(wait_minutes * 60)
+
         for attempt in range(1, MAX_RETRY_ATTEMPTS + 1):
             logger.info(f"🔄 Tentativa {attempt} de {MAX_RETRY_ATTEMPTS}")
 
