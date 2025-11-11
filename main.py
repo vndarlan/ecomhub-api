@@ -1541,11 +1541,16 @@ def safe_driver_operation(driver_func):
 @apply_rate_limit("5/minute")
 async def processar_ecomhub(
     request_body: ProcessRequest,
-    request: Request,
-    api_key: str = Depends(verify_api_key)
+    request: Request
 ):
-    """Endpoint principal - COM SUPORTE A TODOS OS PAÍSES + NOVOS PAÍSES"""
+    """
+    Endpoint principal - COM SUPORTE A TODOS OS PAÍSES + NOVOS PAÍSES
 
+    ⚠️ TEMPORÁRIO: Autenticação desabilitada para compatibilidade com Chegou Hub
+    ⚠️ TODO: Reativar autenticação após atualizar backend do Chegou Hub
+    """
+
+    logger.warning("⚠️ [SEM AUTENTICAÇÃO TEMPORARIAMENTE] /api/processar-ecomhub/")
     logger.info(f"Processamento: {request_body.data_inicio} - {request_body.data_fim}, País: {request_body.pais_id}")
     
     # VALIDAÇÃO MODIFICADA: Aceitar "todos" ou países específicos (incluindo novos)
