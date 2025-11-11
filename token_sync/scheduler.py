@@ -310,16 +310,27 @@ class TokenScheduler:
 
     def _setup_signal_handlers(self):
         """Configura handlers para shutdown gracioso."""
-        def signal_handler(sig, frame):
-            logger.info(f"\n📍 Sinal {sig} recebido - encerrando graciosamente...")
-            self.stop()
-            sys.exit(0)
+        # Signal handlers só funcionam na thread principal
+        # BackgroundScheduler já tem seu próprio sistema de shutdown
+        import threading
+        if threading.current_thread() is not threading.main_thread():
+            logger.debug("Não é thread principal - pulando configuração de signal handlers")
+            return
 
-        # Registrar handlers
-        signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
-        signal.signal(signal.SIGTERM, signal_handler)  # Kill
+        try:
+            def signal_handler(sig, frame):
+                logger.info(f"\n📍 Sinal {sig} recebido - encerrando graciosamente...")
+                self.stop()
+                sys.exit(0)
 
-        logger.debug("Signal handlers configurados")
+            # Registrar handlers
+            signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
+            signal.signal(signal.SIGTERM, signal_handler)  # Kill
+
+            logger.debug("Signal handlers configurados")
+        except ValueError as e:
+            # Erro esperado se não estiver na thread principal
+            logger.debug(f"Não foi possível configurar signal handlers: {e}")
 
 
 # Instância global do scheduler
