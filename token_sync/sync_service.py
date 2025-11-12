@@ -236,6 +236,11 @@ class TokenSyncService:
             # Preparar cookies no formato correto do requests
             cookies_dict = self.current_tokens.get('cookies', {})
 
+            logger.info(f"📋 Cookies disponíveis: {list(cookies_dict.keys())}")
+            logger.debug(f"🔑 token presente: {'token' in cookies_dict}")
+            logger.debug(f"🔑 e_token presente: {'e_token' in cookies_dict}")
+            logger.debug(f"🔑 refresh_token presente: {'refresh_token' in cookies_dict}")
+
             # Fazer requisição simples à API EcomHub
             # Pode ser QUALQUER endpoint - o servidor automaticamente renova via Set-Cookie
             payload = {
@@ -251,6 +256,9 @@ class TokenSyncService:
                 }
             }
 
+            logger.debug(f"🌐 URL: {ECOMHUB_API_URL}")
+            logger.debug(f"📦 Payload: {payload}")
+
             response = requests.post(
                 ECOMHUB_API_URL,
                 json=payload,
@@ -259,11 +267,16 @@ class TokenSyncService:
                 timeout=10  # Timeout curto - se demorar muito, melhor usar Selenium
             )
 
+            logger.info(f"📥 Response status: {response.status_code}")
+
             # Verificar se requisição foi bem-sucedida
             if response.status_code != 200:
                 logger.warning(f"⚠️ HTTP refresh falhou com status {response.status_code}")
-                logger.debug(f"   URL: {ECOMHUB_API_URL}")
-                logger.debug(f"   Response: {response.text[:200] if response.text else 'empty'}")
+                logger.warning(f"   URL: {ECOMHUB_API_URL}")
+                logger.warning(f"   Response text: {response.text[:500] if response.text else 'empty'}")
+                logger.warning(f"   Response headers: {dict(response.headers)}")
+                logger.warning(f"   Request headers: {headers}")
+                logger.warning(f"   Cookies enviados: {list(cookies_dict.keys())}")
                 return None
 
             logger.debug(f"✅ HTTP refresh retornou 200 OK")
