@@ -182,12 +182,12 @@ def create_driver(headless=True):
     debug_port = 9000 + (os_module.getpid() % 1000)
     options.add_argument(f"--remote-debugging-port={debug_port}")
     
-    # Configurações de memória e performance
-    options.add_argument("--memory-pressure-off")
-    options.add_argument("--max_old_space_size=4096")
+    # Configurações de memória e performance (otimizado para Railway)
     options.add_argument("--disable-background-timer-throttling")
     options.add_argument("--disable-backgrounding-occluded-windows")
     options.add_argument("--disable-renderer-backgrounding")
+    options.add_argument("--disable-features=IsolateOrigins,site-per-process")  # Reduz processos
+    options.add_argument("--renderer-process-limit=1")  # Limita processos renderer
     
     # Configurações de recursos
     options.add_argument("--disable-extensions")
@@ -219,7 +219,8 @@ def create_driver(headless=True):
     # Flags de estabilidade para containers (Railway)
     options.add_argument("--disable-software-rasterizer")
     options.add_argument("--disable-setuid-sandbox")
-    options.add_argument("--single-process")  # Reduz uso de memória
+    # --single-process removido: causava crashes/session invalid
+    options.add_argument("--disable-features=VizDisplayCompositor")  # Reduz uso de memória de forma mais segura
 
     try:
         driver = webdriver.Chrome(options=options)

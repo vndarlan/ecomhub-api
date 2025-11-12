@@ -311,7 +311,7 @@ class TokenSyncService:
         3. Armazena localmente
         4. Envia para Chegou Hub
 
-        IMPORTANTE: Este método tem timeout de 100 segundos via wrapper.
+        IMPORTANTE: Este método tem timeout de 120 segundos via wrapper.
 
         Returns:
             bool: True se sincronização bem-sucedida, False caso contrário
@@ -323,7 +323,7 @@ class TokenSyncService:
             logger.info("=" * 60)
             logger.info(f"🔄 SINCRONIZAÇÃO #{self.sync_count} INICIADA")
             logger.info(f"Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            logger.info(f"⏱️ Timeout máximo: 100 segundos")
+            logger.info(f"⏱️ Timeout máximo: 120 segundos")
 
             if self.last_sync:
                 time_since_last = (datetime.utcnow() - self.last_sync).total_seconds() / 60
