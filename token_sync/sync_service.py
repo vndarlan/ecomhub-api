@@ -14,6 +14,8 @@ import time
 import json
 import sys
 import os
+import base64
+import requests
 
 # Adicionar diretório pai ao path para importar do main.py
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,6 +25,81 @@ from .config import *
 from .database import get_database
 
 logger = logging.getLogger(__name__)
+
+
+def decode_jwt_without_verification(token):
+    """
+    Decodifica um JWT sem verificar a assinatura.
+    Usado apenas para ler claims como 'exp' (expiration time).
+
+    Args:
+        token (str): Token JWT
+
+    Returns:
+        dict: Claims do token ou None se inválido
+    """
+    try:
+        # JWT tem formato: header.payload.signature
+        parts = token.split('.')
+        if len(parts) != 3:
+            return None
+
+        # Decodificar payload (segunda parte)
+        # Adicionar padding se necessário
+        payload = parts[1]
+        padding = len(payload) % 4
+        if padding:
+            payload += '=' * (4 - padding)
+
+        # Decodificar de base64
+        decoded_bytes = base64.urlsafe_b64decode(payload)
+        decoded_json = json.loads(decoded_bytes)
+
+        return decoded_json
+    except Exception as e:
+        logger.debug(f"Erro ao decodificar JWT: {e}")
+        return None
+
+
+def is_refresh_token_valid(refresh_token):
+    """
+    Verifica se o refresh_token ainda está válido (não expirado).
+
+    Args:
+        refresh_token (str): Refresh token para validar
+
+    Returns:
+        bool: True se válido, False se expirado ou inválido
+    """
+    try:
+        claims = decode_jwt_without_verification(refresh_token)
+        if not claims:
+            logger.debug("Não foi possível decodificar refresh_token")
+            return False
+
+        # Verificar campo 'exp' (expiration time em timestamp Unix)
+        exp = claims.get('exp')
+        if not exp:
+            logger.debug("refresh_token não possui campo 'exp'")
+            return False
+
+        # Comparar com timestamp atual
+        current_timestamp = datetime.utcnow().timestamp()
+        expires_at = datetime.fromtimestamp(exp)
+
+        if current_timestamp >= exp:
+            logger.info(f"🔴 refresh_token EXPIRADO (expirou em {expires_at.strftime('%Y-%m-%d %H:%M:%S')} UTC)")
+            return False
+
+        # Calcular tempo restante
+        time_remaining = timedelta(seconds=(exp - current_timestamp))
+        logger.info(f"🟢 refresh_token VÁLIDO (expira em {time_remaining})")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Erro ao validar refresh_token: {e}")
+        return False
 
 def kill_orphan_chrome_processes():
     """
@@ -102,6 +179,130 @@ class TokenSyncService:
         logger.info(f"Margem de segurança: {get_safety_margin_minutes()} minutos")
         logger.info("=" * 60)
 
+    def refresh_tokens_via_http(self):
+        """
+        Tenta renovar tokens via HTTP usando refresh_token existente.
+
+        Este método é MUITO mais rápido que Selenium (~1s vs ~50s) e deve ser
+        usado sempre que o refresh_token ainda estiver válido.
+
+        O EcomHub automaticamente renova tokens em QUALQUER resposta de API
+        quando o token está expirado mas o refresh_token ainda é válido.
+        Os novos tokens vêm via Set-Cookie headers.
+
+        Returns:
+            dict: Novos tokens se sucesso, None se falhou
+        """
+        try:
+            # Verificar se refresh via HTTP está habilitado
+            if not ENABLE_HTTP_REFRESH:
+                logger.debug("Refresh via HTTP desabilitado em config")
+                return None
+
+            # Verificar se temos tokens atuais com refresh_token
+            if not self.current_tokens:
+                logger.debug("Nenhum token anterior disponível para refresh HTTP")
+                return None
+
+            cookies = self.current_tokens.get('cookies', {})
+            refresh_token = cookies.get('refresh_token')
+
+            if not refresh_token:
+                logger.debug("refresh_token não encontrado nos cookies atuais")
+                return None
+
+            # Validar se refresh_token ainda está válido
+            if not is_refresh_token_valid(refresh_token):
+                logger.warning("⚠️ refresh_token expirado - será necessário usar Selenium")
+                return None
+
+            logger.info("🚀 Tentando refresh via HTTP (rápido)...")
+            start_time = time.time()
+
+            # Preparar headers e cookies para requisição
+            headers = self.current_tokens.get('headers', {}).copy()
+            cookie_string = self.current_tokens.get('cookie_string', '')
+
+            # Fazer requisição simples à API EcomHub
+            # Pode ser QUALQUER endpoint - o servidor automaticamente renova via Set-Cookie
+            payload = {
+                "pagination": {"page": 1, "perPage": 1},
+                "orderBy": "DESC",
+                "sortBy": "createdAt",
+                "filters": {
+                    "date": {
+                        "start": (datetime.utcnow() - timedelta(days=7)).strftime('%Y-%m-%d'),
+                        "end": datetime.utcnow().strftime('%Y-%m-%d')
+                    },
+                    "countries": [VALIDATION_TEST_COUNTRY_ID]
+                }
+            }
+
+            # Adicionar cookies aos headers
+            headers["Cookie"] = cookie_string
+
+            response = requests.post(
+                ECOMHUB_API_URL,
+                json=payload,
+                headers=headers,
+                timeout=10  # Timeout curto - se demorar muito, melhor usar Selenium
+            )
+
+            # Verificar se requisição foi bem-sucedida
+            if response.status_code != 200:
+                logger.warning(f"⚠️ HTTP refresh falhou com status {response.status_code}")
+                return None
+
+            # Extrair novos cookies do Set-Cookie headers
+            new_cookies = {}
+
+            # requests.cookies é um CookieJar que podemos iterar
+            for cookie in response.cookies:
+                new_cookies[cookie.name] = cookie.value
+
+            # Verificar se recebemos os tokens necessários
+            required_tokens = ['token', 'e_token', 'refresh_token']
+            missing_tokens = [t for t in required_tokens if t not in new_cookies]
+
+            if missing_tokens:
+                logger.warning(f"⚠️ Tokens ausentes na resposta HTTP: {missing_tokens}")
+                # Se não recebemos novos tokens, manter os antigos (provavelmente ainda válidos)
+                # Mas vamos usar Selenium na próxima vez para garantir
+                return None
+
+            # Atualizar com refresh_token antigo se não vier um novo
+            # (às vezes o servidor só renova token e e_token, mantendo refresh_token)
+            if 'refresh_token' not in new_cookies and refresh_token:
+                new_cookies['refresh_token'] = refresh_token
+
+            # Preparar resposta completa (mesmo formato que get_fresh_tokens)
+            current_time = datetime.utcnow()
+            expiration_time = current_time + timedelta(minutes=TOKEN_DURATION_MINUTES)
+
+            tokens_data = {
+                "cookies": new_cookies,
+                "cookie_string": "; ".join([f"{k}={v}" for k, v in new_cookies.items()]),
+                "headers": headers,
+                "timestamp": current_time.isoformat() + "Z",
+                "valid_until_estimate": expiration_time.isoformat() + "Z",
+                "duration_minutes": TOKEN_DURATION_MINUTES,
+                "sync_number": self.sync_count + 1,
+                "obtained_in_seconds": round(time.time() - start_time, 2),
+                "method": "http_refresh"  # Identificador do método usado
+            }
+
+            elapsed = time.time() - start_time
+            logger.info(f"✅ Tokens renovados via HTTP em {elapsed:.2f}s (50x mais rápido que Selenium!)")
+
+            return tokens_data
+
+        except requests.exceptions.Timeout:
+            logger.warning("⏱️ Timeout no refresh HTTP - fallback para Selenium")
+            return None
+        except Exception as e:
+            logger.warning(f"⚠️ Erro no refresh HTTP: {e} - fallback para Selenium")
+            return None
+
     def get_fresh_tokens(self):
         """
         Obtém novos tokens via Selenium.
@@ -167,10 +368,11 @@ class TokenSyncService:
                 "valid_until_estimate": expiration_time.isoformat() + "Z",
                 "duration_minutes": TOKEN_DURATION_MINUTES,
                 "sync_number": self.sync_count + 1,
-                "obtained_in_seconds": round(time.time() - start_time, 2)
+                "obtained_in_seconds": round(time.time() - start_time, 2),
+                "method": "selenium"  # Identificador do método usado
             }
 
-            logger.info(f"✅ Tokens obtidos em {tokens_data['obtained_in_seconds']}s")
+            logger.info(f"✅ Tokens obtidos via Selenium em {tokens_data['obtained_in_seconds']}s")
 
             return tokens_data
 
@@ -306,10 +508,11 @@ class TokenSyncService:
         Realiza uma sincronização completa de tokens.
 
         Esta é a função principal que:
-        1. Obtém tokens frescos
-        2. Valida os tokens
-        3. Armazena localmente
-        4. Envia para Chegou Hub
+        1. Tenta refresh via HTTP (rápido ~1s) se refresh_token válido
+        2. Se falhar, usa Selenium (~50s) como fallback
+        3. Valida os tokens
+        4. Armazena localmente
+        5. Envia para Chegou Hub
 
         IMPORTANTE: Este método tem timeout de 120 segundos via wrapper.
 
@@ -330,9 +533,26 @@ class TokenSyncService:
                 logger.info(f"Última sync: {time_since_last:.1f} minutos atrás")
 
             # Etapa 1: Obter tokens frescos
-            tokens_data = self.get_fresh_tokens()
+            # ESTRATÉGIA INTELIGENTE: Tentar HTTP primeiro (rápido), Selenium como fallback
+            tokens_data = None
+
+            # Tentar refresh via HTTP se disponível
+            if ENABLE_HTTP_REFRESH and self.current_tokens:
+                logger.info("🎯 Tentando método rápido (HTTP refresh)...")
+                tokens_data = self.refresh_tokens_via_http()
+
+                if tokens_data:
+                    logger.info("✅ Refresh HTTP bem-sucedido! ⚡")
+                else:
+                    logger.info("⚠️ Refresh HTTP não disponível, usando Selenium...")
+
+            # Se HTTP falhou ou não está disponível, usar Selenium
             if not tokens_data:
-                raise Exception("Falha ao obter tokens")
+                logger.info("🌐 Usando método tradicional (Selenium)...")
+                tokens_data = self.get_fresh_tokens()
+
+            if not tokens_data:
+                raise Exception("Falha ao obter tokens (HTTP e Selenium falharam)")
 
             # Etapa 2: Validar e armazenar
             if not self.validate_and_store_tokens(tokens_data):
@@ -348,17 +568,21 @@ class TokenSyncService:
 
             # Calcular tempo de execução
             sync_duration = time.time() - sync_start_time
+            method_used = tokens_data.get('method', 'unknown')
 
             # Log de sucesso
             logger.info("✅ SINCRONIZAÇÃO COMPLETA COM SUCESSO")
+            logger.info(f"   Método utilizado: {method_used.upper()}")
             logger.info(f"   Tempo de execução: {sync_duration:.1f}s")
             logger.info(f"   Total de syncs: {self.sync_count}")
             logger.info(f"   Sucessos: {self.success_count}")
             logger.info(f"   Taxa de sucesso: {(self.success_count/self.sync_count)*100:.1f}%")
 
-            # Alerta se está demorando muito
-            if sync_duration > 90:
-                logger.warning(f"⚠️ Sync demorou {sync_duration:.1f}s (>90s) - risco de sobreposição!")
+            # Alerta se está demorando muito (apenas para Selenium)
+            if method_used == "selenium" and sync_duration > 90:
+                logger.warning(f"⚠️ Sync via Selenium demorou {sync_duration:.1f}s (>90s) - considere otimização!")
+            elif method_used == "http_refresh" and sync_duration > 5:
+                logger.warning(f"⚠️ HTTP refresh demorou {sync_duration:.1f}s (>5s) - deveria ser < 2s!")
 
             logger.info("=" * 60)
             return True

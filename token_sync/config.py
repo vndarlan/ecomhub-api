@@ -117,6 +117,20 @@ VALIDATE_TOKENS_AFTER_FETCH = os.getenv("VALIDATE_TOKENS_AFTER_FETCH", "true").l
 VALIDATION_TEST_COUNTRY_ID = int(os.getenv("VALIDATION_TEST_COUNTRY_ID", "164"))
 
 # ===========================
+# Configurações de Refresh Token
+# ===========================
+
+# Habilitar refresh via HTTP (usa refresh_token para renovar sem Selenium)
+# Quando habilitado, só usa Selenium quando refresh_token expira (a cada 48h)
+ENABLE_HTTP_REFRESH = os.getenv("ENABLE_HTTP_REFRESH", "true").lower() == "true"
+
+# URL da API EcomHub para fazer requisições de refresh
+ECOMHUB_API_URL = os.getenv("ECOMHUB_API_URL", "https://api.ecomhub.app/api/orders")
+
+# Duração do refresh_token em horas (48 horas = 2 dias)
+REFRESH_TOKEN_DURATION_HOURS = int(os.getenv("REFRESH_TOKEN_DURATION_HOURS", "48"))
+
+# ===========================
 # Helpers e Funções Utilitárias
 # ===========================
 
